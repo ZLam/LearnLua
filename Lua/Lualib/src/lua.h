@@ -62,7 +62,7 @@ typedef struct lua_State lua_State;
 * 
 * lua能表达的各种数据类型
 */
-#define LUA_TNONE		(-1)        // 应该是在底层表示无效意义用的
+#define LUA_TNONE		(-1)        // 应该是在底层表示 无效 无意义之类 用的
 
 #define LUA_TNIL		0           // 空类型
 #define LUA_TBOOLEAN		1       // 布尔类型

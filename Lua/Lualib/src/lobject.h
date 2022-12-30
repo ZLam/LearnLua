@@ -18,33 +18,43 @@
 
 /*
 ** Extra types for collectable non-values
+* 
+* 表示一些额外的类型？lua内部使用，脚本层上的使用无需留意到？   @TODO
 */
-#define LUA_TUPVAL	LUA_NUMTYPES  /* upvalues */
-#define LUA_TPROTO	(LUA_NUMTYPES+1)  /* function prototypes */
-#define LUA_TDEADKEY	(LUA_NUMTYPES+2)  /* removed keys in tables */
+#define LUA_TUPVAL	LUA_NUMTYPES  /* upvalues */        // 表示 upvalue 类型 ？
+#define LUA_TPROTO	(LUA_NUMTYPES+1)  /* function prototypes */     // 表示函数原型 ？
+#define LUA_TDEADKEY	(LUA_NUMTYPES+2)  /* removed keys in tables */      // 不知道什么来的
 
 
 
 /*
 ** number of all possible types (including LUA_TNONE but excluding DEADKEY)
+* 
+* 总共的类型数量，不包含 LUA_TDEADKEY
 */
 #define LUA_TOTALTYPES		(LUA_TPROTO + 2)
 
 
 /*
 ** tags for Tagged Values have the following use of bits:
-** bits 0-3: actual tag (a LUA_T* constant)
-** bits 4-5: variant bits
-** bit 6: whether value is collectable
+** bits 0-3: actual tag (a LUA_T* constant)     表示实际类型是什么（ nil, number, bool, func, table 等等 ）
+** bits 4-5: variant bits       扩展数据位，感觉就是类型的meta信息，比如 number 有 int 或 float，bool 有 true 或 false，string 有短字符串或长字符串之类
+** bit 6: whether value is collectable      表示是否由lua gc管理
 */
 
-/* add variant bits to a type */
+/**
+* add variant bits to a type
+* 
+* 就是用来加上扩展数据位的，类型的meta信息
+*/
 #define makevariant(t,v)	((t) | ((v) << 4))
 
 
 
 /*
 ** Union of all Lua values
+* 
+* 能表示lua所有数据类型的结构
 */
 typedef union Value {
   struct GCObject *gc;    /* collectable objects */
@@ -62,6 +72,9 @@ typedef union Value {
 
 #define TValuefields	Value value_; lu_byte tt_
 
+/**
+* 其实就是 Value 搭上个 tt_ 能表示上 Value 是什么数据类型
+*/
 typedef struct TValue {
   TValuefields;
 } TValue;
@@ -71,28 +84,56 @@ typedef struct TValue {
 #define valraw(o)	(&val_(o))
 
 
-/* raw type tag of a TValue */
+/**
+* raw type tag of a TValue
+* 
+* 取 TValue 类型的 tt_ 属性的值
+*/
 #define rawtt(o)	((o)->tt_)
 
-/* tag with no variants (bits 0-3) */
+/**
+* tag with no variants (bits 0-3)
+* 
+* 0x0F == 00001111
+* 就是取 0-3 位的内容
+*/
 #define novariant(t)	((t) & 0x0F)
 
-/* type tag of a TValue (bits 0-3 for tags + variant bits 4-5) */
+/**
+* type tag of a TValue (bits 0-3 for tags + variant bits 4-5)
+* 
+* 0x3F == 00111111
+* 就是取 0-5 位的内容
+*/
 #define withvariant(t)	((t) & 0x3F)
 #define ttypetag(o)	withvariant(rawtt(o))
 
-/* type of a TValue */
+/**
+* type of a TValue
+* 
+* 实际就是返回 TValue 类型的 tt_ 属性的 0-3 位的内容
+* tt_ 的 0-3 位的内容表示的是 TValue 内容表示的数据类型
+*/
 #define ttype(o)	(novariant(rawtt(o)))
 
 
-/* Macros to test type */
+/**
+* Macros to test type
+* 
+* 将 _tt 的 0-5 位理解为 tag（包含type）
+*          0-3 位理解为 type
+*/
 #define checktag(o,t)		(rawtt(o) == (t))
 #define checktype(o,t)		(ttype(o) == (t))
 
 
 /* Macros for internal tests */
 
-/* collectable object has the same tag as the original value */
+/**
+* collectable object has the same tag as the original value
+* 
+* obj 的 tag 是否等于 obj里gc对象的 tag ？？ @TODO 目前不知道什么来的
+*/
 #define righttt(obj)		(ttypetag(obj) == gcvalue(obj)->tt)
 
 /*
@@ -108,11 +149,19 @@ typedef struct TValue {
 
 /* Macros to set values */
 
-/* set a value's tag */
+/**
+* set a value's tag
+* 
+* 赋值给 tt_
+*/
 #define settt_(o,t)	((o)->tt_=(t))
 
 
-/* main macro to copy values (from 'obj1' to 'obj2') */
+/**
+* main macro to copy values (from 'obj1' to 'obj2')
+* 
+* 复制 obj2 的 value_ 和 tt_ 给 obj1
+*/
 #define setobj(L,obj1,obj2) \
 	{ TValue *io1=(obj1); const TValue *io2=(obj2); \
           io1->value_ = io2->value_; settt_(io1, io2->tt_); \
@@ -142,6 +191,8 @@ typedef struct TValue {
 ** in an unsigned short. They are represented by delta==0, and
 ** their real delta is always the maximum value that fits in
 ** that field.
+* 
+* @TODO 目前不知道是什么，栈上用的 Value ？
 */
 typedef union StackValue {
   TValue val;
@@ -271,22 +322,39 @@ typedef StackValue *StkId;
 /*
 ** Common Header for all collectable objects (in macro form, to be
 ** included in other objects)
+* 
+* 所有gc类型的通用header
 */
 #define CommonHeader	struct GCObject *next; lu_byte tt; lu_byte marked
 
 
-/* Common type for all collectable objects */
+/**
+* Common type for all collectable objects
+* 
+* 理解成gc类型的基类吧
+*/
 typedef struct GCObject {
   CommonHeader;
 } GCObject;
 
 
-/* Bit mark for collectable types */
+/**
+* Bit mark for collectable types
+* 
+* 表示是否gc类型，第6位是不是1
+*/
 #define BIT_ISCOLLECTABLE	(1 << 6)
 
+/**
+* 判断 TValue 是否需要 gc ，其实就是睇 TValue 的 tt_ 的第6位是不是1
+*/
 #define iscollectable(o)	(rawtt(o) & BIT_ISCOLLECTABLE)
 
-/* mark a tag as collectable */
+/**
+* mark a tag as collectable
+* 
+* 加上gc标志位
+*/
 #define ctb(t)			((t) | BIT_ISCOLLECTABLE)
 
 #define gcvalue(o)	check_exp(iscollectable(o), val_(o).gc)
