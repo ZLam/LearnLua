@@ -38,8 +38,8 @@
 /*
 ** tags for Tagged Values have the following use of bits:
 ** bits 0-3: actual tag (a LUA_T* constant)     表示实际类型是什么（ nil, number, bool, func, table 等等 ）
-** bits 4-5: variant bits       扩展数据位，感觉就是类型的meta信息，比如 number 有 int 或 float，bool 有 true 或 false，string 有短字符串或长字符串之类
-** bit 6: whether value is collectable      表示是否由lua gc管理
+** bits 4-5: variant bits                       扩展数据位，感觉就是类型的meta信息，比如 number 有 int 或 float，bool 有 true 或 false，string 有短字符串或长字符串之类
+** bit 6: whether value is collectable          表示是否由 lua gc 管理
 */
 
 /**
@@ -54,7 +54,7 @@
 /*
 ** Union of all Lua values
 * 
-* 能表示lua所有数据类型的结构
+* 能表示 lua 脚本上所有类型的结构
 */
 typedef union Value {
   struct GCObject *gc;    /* collectable objects */
@@ -73,7 +73,7 @@ typedef union Value {
 #define TValuefields	Value value_; lu_byte tt_
 
 /**
-* 其实就是 Value 搭上个 tt_ 能表示上 Value 是什么数据类型
+* 其实就是 Value 搭上个 tt_(unsigned char) 能表示上 Value 是什么数据类型
 */
 typedef struct TValue {
   TValuefields;
@@ -87,7 +87,7 @@ typedef struct TValue {
 /**
 * raw type tag of a TValue
 * 
-* 取 TValue 类型的 tt_ 属性的值
+* 返回 TValue 类型对象的 tt_ 属性
 */
 #define rawtt(o)	((o)->tt_)
 
@@ -323,7 +323,7 @@ typedef StackValue *StkId;
 ** Common Header for all collectable objects (in macro form, to be
 ** included in other objects)
 * 
-* 所有gc类型的通用header
+* 所有 gc 类型的通用 header
 */
 #define CommonHeader	struct GCObject *next; lu_byte tt; lu_byte marked
 
@@ -331,7 +331,7 @@ typedef StackValue *StkId;
 /**
 * Common type for all collectable objects
 * 
-* 理解成gc类型的基类吧
+* 理解成 gc 类型的基类吧
 */
 typedef struct GCObject {
   CommonHeader;
@@ -341,7 +341,7 @@ typedef struct GCObject {
 /**
 * Bit mark for collectable types
 * 
-* 表示是否gc类型，第6位是不是1
+* 表示是否 gc 类型，第6位是不是1
 */
 #define BIT_ISCOLLECTABLE	(1 << 6)
 
@@ -353,7 +353,7 @@ typedef struct GCObject {
 /**
 * mark a tag as collectable
 * 
-* 加上gc标志位
+* 加上 gc 标志位
 */
 #define ctb(t)			((t) | BIT_ISCOLLECTABLE)
 

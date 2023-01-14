@@ -60,7 +60,7 @@ typedef struct lua_State lua_State;
 /*
 ** basic types
 * 
-* lua能表达的各种数据类型
+* lua 能表达的各种数据类型
 */
 #define LUA_TNONE		(-1)        // 应该是在底层表示 无效 无意义之类 用的
 
@@ -69,12 +69,12 @@ typedef struct lua_State lua_State;
 #define LUA_TLIGHTUSERDATA	2       // void* 指针，指向的内容的生命周期由外部管理，lua不管的
 #define LUA_TNUMBER		3           // 数字类型
 #define LUA_TSTRING		4           // 字符串类型
-#define LUA_TTABLE		5           // table类型
+#define LUA_TTABLE		5           // table 类型
 #define LUA_TFUNCTION		6       // 函数类型
-#define LUA_TUSERDATA		7       // void* 指针，指向的内容的生命周期由lua管，注册进lua的gc模块
-#define LUA_TTHREAD		8           // lua虚拟机，协程
+#define LUA_TUSERDATA		7       // void* 指针，指向的内容的生命周期由 lua 管，注册进 lua 的 gc 模块
+#define LUA_TTHREAD		8           // lua 虚拟机，协程
 
-#define LUA_NUMTYPES		9       // lua的类型数量
+#define LUA_NUMTYPES		9       // lua 脚本的类型数量
 
 
 
