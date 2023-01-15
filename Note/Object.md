@@ -189,7 +189,7 @@ union GCUnion {
 1. **类型分 没gc 和 可gc**  
     lua 脚本的类型根据 tt_ 值中的第 6 位判断该类型是不是 可gc 。可gc 的类型可以看到它们结构都包含 CommonHeader 宏（例如 String，Table等）。所以 没gc 的类型是 nil ， bool ， lightUserData ， number 。 可gc 的类型是 string ， table ， function ， userData ， thread 。 可gc 的类型在设置它们的 tt_ 的时候会用 ctb 宏加上 gc 标志位。
 2. **可gc 类型的联合体**  
-    可gc 类型都包含 CommonHeader 宏，并在类型声明的最开始部分。所以可以将 CommonHeader 这共有部分的整体理解为一个基类，而其他 可gc 类型均从这个基类中继承下来，所以它们的结构体声明开始部分都是这个成员。而 GCUnion 这个联合体把所有 可gc 类型都包含了进来，同时自己声明最开始的部分是 GCObject 类型，实际同样是 CommonHeader 的结构，所以根据 C99 标准， GCObject 可以强转 GCUnion 。到此，所有 可gc 类型都可以用 GCObject 表示 ，同时 GCObject 可以转 GCUnion 读回具体的值。
+    可gc 类型都包含 CommonHeader 宏，并在类型声明的最开始部分。所以可以将 CommonHeader 这共有部分的整体理解为一个基类，而其他 可gc 类型均从这个基类中继承下来，所以它们的结构体声明开始部分都是这共有部分。而 GCUnion 这个联合体把所有 可gc 类型都包含了进来，同时自己声明最开始的部分是 GCObject 类型，实际同样是 CommonHeader 的结构，所以根据 C99 标准， GCObject 可以强转 GCUnion 。到此，所有 可gc 类型都可以用 GCObject 表示 ，同时 GCObject 可以转 GCUnion 读回具体的值。
 3. **GCObject**  
     GCObject 类似基类表示了所有 可gc 类型。 next 属性指向下一个GC链表的成员， tt 表示数据的类型， marked gc 用的标记。
 4. **表示脚本所有的类型**  
@@ -197,8 +197,45 @@ union GCUnion {
 5. **通用结构**  
     脚本所有的类型已经能表示出来了，那么最后加上一个字段说明当前数据实际是什么类型，最终这个通用结构就出来了，该结构就是 TValue 。  
 ## 总结
+lua 巧妙的利用联合体和把 CommonHeader 声明在结构的最开始，把 可gc 和 没gc 类型都能表示出来，最终设计出通用的结构。之后感觉可以看看某种类型例如 string ， table 的全部的实现方式加深理解 lua 数据上的设计。  
 
+另外下面是看源码时遇到的一些疑问。  
+```c
+/*
+** Extra types for collectable non-values
+* 
+* 表示一些额外的类型？lua内部使用，脚本层上的使用无需留意到？   @TODO
+*/
+#define LUA_TUPVAL	LUA_NUMTYPES  /* upvalues */        // 表示 upvalue 类型 ？
+#define LUA_TPROTO	(LUA_NUMTYPES+1)  /* function prototypes */     // 表示函数原型 ？
+#define LUA_TDEADKEY	(LUA_NUMTYPES+2)  /* removed keys in tables */      // 不知道什么来的
 
+/**
+* collectable object has the same tag as the original value
+* 
+* obj 的 tag 是否等于 obj里gc对象的 tag ？？ @TODO 目前不知道什么来的
+*/
+#define righttt(obj)		(ttypetag(obj) == gcvalue(obj)->tt)
 
+/*
+** Entries in a Lua stack. Field 'tbclist' forms a list of all
+** to-be-closed variables active in this stack. Dummy entries are
+** used when the distance between two tbc variables does not fit
+** in an unsigned short. They are represented by delta==0, and
+** their real delta is always the maximum value that fits in
+** that field.
+* 
+* @TODO 目前不知道是什么，栈上用的 Value ？
+*/
+typedef union StackValue {
+  TValue val;
+  struct {
+    TValuefields;
+    unsigned short delta;
+  } tbclist;
+} StackValue;
 
-（疑问 实际 可以 GCObject 转 TString 这样的嚒）
+// 理论上是不是 GCObject 也能强转 TString ？？
+GCObject obj1;
+auto obj2 = (TString)obj1
+```
