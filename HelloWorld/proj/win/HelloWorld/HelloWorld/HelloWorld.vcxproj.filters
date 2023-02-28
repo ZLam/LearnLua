@@ -15,8 +15,13 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\luac.c">
+    <ClCompile Include="..\..\..\..\src\main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\..\..\src\main.lua">
+      <Filter>Source Files</Filter>
+    </None>
   </ItemGroup>
 </Project>
