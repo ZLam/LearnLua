@@ -1,5 +1,6 @@
 #include <iostream>
 #include "lua.hpp"
+#include "helper_func.h"
 
 void Lua_AddSearchPath(lua_State* L, const std::string& InPath)
 {
@@ -22,9 +23,7 @@ int main()
 
 	luaL_openlibs(L);
 
-	Lua_AddSearchPath(L, "..//HelloWorld//src");
-
-	if (0 != luaL_dofile(L, "main.lua"))
+	if (0 != luaL_dofile(L, ScriptFullPath("main.lua").c_str()))
 	{
 		std::cout << lua_tostring(L, -1) << std::endl;
 	}
