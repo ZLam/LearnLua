@@ -104,6 +104,23 @@ OpArgK类型的操作数表示常量表索引或者寄存器索引，具体可�
 
 除了上面介绍的这几种情况，操作数也可能表示布尔值、整数值、upvalue索引、子函数索引等，这些情况都可以归到OpArgU类型里。
 
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/Xnip2023-04-03_00-58-46.jpg)
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/Xnip2023-04-05_21-21-26.jpg)
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/Xnip2023-04-05_21-20-44.jpg)
+编码模式有4种，其中 iABC ， iABx ， iAx 这3种要 decode 是比较简单的，直接按位取就好了。但 iAsBx 模式的 decode 会相对麻烦啲，因为 sBx 表示的是有符号整数，有符号整数的编码方式有很多种，例如 2的补码(two's complement) ， lua这边用的是叫 偏移二进制码(offset binary，也叫作excess-k)，具体来说，如果把sBx解释成无符号整数时它的值是x，那么解释成有符号整数时它的值就是x-K。那么K是什么呢？K取sBx所能表示的最大无符号整数值的一半，也就是上面代码中的MAXARG_sBx。
+
+
+
+
+
+
+lua stack
+栈索引
+
+lua state
+
+LUA_TNONE到底代表什么类型呢？如前所述，Lua栈也可以按索引存取值，如果我们提供给LuaAPI一个无效索引，那么这个索引对应的值的类型就是LUA_TNONE（对应 Object.md 里的疑惑）
+
 自己动手实现lua 读书笔记 end
 
 
