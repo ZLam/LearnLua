@@ -51,6 +51,27 @@ lua脚本并不是直接被lua解释器解释执行,而是类似java语言那样
 
 chunk理解成我们平时写的lua代码,二进制chunk其实就是用luac encode了下(转成内部结构,包含字节码等信息),lua解释器能直接跑平时的lua代码,也能直接跑二进制chunk,因为它内部实际还是先把lua代码转成二进制chunk再执行的,所以预编译这操作不会加快执行速度,只会加快加载脚本的速度
 
+Lua编译器以函数为单位进行编译，每一个函数都会被Lua编译器编译为一个内部结构，这个结构叫作“原型”（Prototype）。原型主要包含6部分内容，分别是：函数基本信息（包括参数数量、局部变量数量等）、字节码、常量表、Upvalue表、调式信息、子函数原型列表。由此可知，函数原型是一种递归结构，并且Lua源码中函数的嵌套关系会直接反映在编译后的原型里。
+
+细心的读者一定会想到这样一个问题：前面我们写的“Hello，World！”程序里面只有一条打印语句，并没有定义函数，那么Lua编译器是怎么编译这个文件的呢？由于Lua是脚本语言，如果我们每执行一段脚本都必须要定义一个函数（就像Java那样），岂不是很麻烦？所以这个吃力不讨好的工作就由Lua编译器代劳了。
+
+Lua编译器会自动为我们的脚本添加一个main函数（后文称其为主函数），并且把整个程序都放进这个函数里，然后再以它为起点进行编译，那么自然就把整个程序都编译出来了。这个主函数不仅是编译的起点，也是未来Lua虚拟机解释执行程序时的入口。我们写的“Hello，World！”程序被Lua编译器加工之后，就变成了下面这个样子。
+
+```lua
+function main(...)
+    print("hello world")
+    return
+end
+```
+
+把主函数编译成函数原型后，Lua编译器会给它再添加一个头部（Header），然后一起dump成luac.out文件，这样，一份热乎的二进制chunk文件就新鲜出炉了。如下图所示。
+
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20230409170544.png)
+
+
+
+
+
 
 
 
@@ -59,6 +80,74 @@ chunk理解成我们平时写的lua代码,二进制chunk其实就是用luac enco
 
 
 luac命令主要有两个用途：第一，作为编译器，把Lua源文件编译成二进制chunk文件：第二，作为反编译器，分析二进制chunk，将信息输出到控制台。
+
+```txt
+luac命令使用例子
+
+1，直接编译指定文件，默认在Luac.exe目录生成luac.out
+./Luac.exe /D/Workspace/LearnLua/HelloWorld/res/script/hello_world.lua
+
+2，编译指定文件，同时生成的二进制chunk文件
+./Luac.exe -o /D/Workspace/LearnLua/HelloWorld/res/script/hello_world.luac53 /D/Workspace/LearnLua/HelloWorld/res/script/hello_world.lua
+
+3，反编译指定文件，输出chunk信息到控制台（注意同时会在Luac.exe目录生成luac.out，可以加 -p 参数不生成luac.out，实际传明文lua文件或二进制chunk文件都可以）
+./Luac.exe -l /D/Workspace/LearnLua/HelloWorld/res/script/hello_world.lua
+./Luac.exe -l /D/Workspace/LearnLua/HelloWorld/res/script/hello_world.luac53
+
+4，反编译高级版，常量表、局部变量表和upvalue表的信息都会打印出来
+./Luac.exe -l -l /D/Workspace/LearnLua/HelloWorld/res/script/hello_world.lua
+
+5，单纯编译一下指定文件，一般用来检测下语法吧
+./Luac.exe -p /D/Workspace/LearnLua/HelloWorld/res/script/hello_world.lua
+
+6，编译出的二进制chunk文件不带调试信息
+./Luac.exe -s /D/Workspace/LearnLua/HelloWorld/res/script/hello_world.lua
+```
+
+```txt
+// foo_bar.lua
+function foo()
+    function bar() end
+end
+
+// luac decode
+./Luac.exe -p -l /D/Workspace/LearnLua/HelloWorld/res/script/foo_bar.lua
+
+main <D:/Workspace/LearnLua/HelloWorld/res/script/foo_bar.lua:0,0> (3 instructions at 01044020)
+0+ params, 2 slots, 1 upvalue, 0 locals, 1 constant, 1 function
+        1       [3]     CLOSURE         0 0     ; 010458A0
+        2       [1]     SETTABUP        0 -1 0  ; _ENV "foo"
+        3       [3]     RETURN          0 1
+
+function <D:/Workspace/LearnLua/HelloWorld/res/script/foo_bar.lua:1,3> (3 instructions at 010458A0)
+0 params, 2 slots, 1 upvalue, 0 locals, 1 constant, 1 function
+        1       [2]     CLOSURE         0 0     ; 010459D0
+        2       [2]     SETTABUP        0 -1 0  ; _ENV "bar"
+        3       [3]     RETURN          0 1
+
+function <D:/Workspace/LearnLua/HelloWorld/res/script/foo_bar.lua:2,2> (1 instruction at 010459D0)
+0 params, 2 slots, 0 upvalues, 0 locals, 0 constants, 0 functions
+        1       [2]     RETURN          0 1
+```
+
+反编译打印出的函数信息包含两个部分：前面两行是函数基本信息，后面是指令列表。
+
+第一行如果以main开头，说明这是编译器为我们生成的主函数；以function开头，说明这是一个普通函数。接着是定义函数的源文件名和函数在文件里的起止行号（对于主函数，起止行号都是0），然后是指令数量和函数地址。
+
+第二行依次给出函数的固定参数数量（如果有+号，表示这是一个vararg函数）、运行函数所必要的寄存器数量、upvalue数量、局部变量数量、常量数量、子函数数量。
+
+指令列表里的每一条指令都包含指令序号、对应行号、操作码和操作数。分号后面是luac根据指令操作数生成的注释，以便于我们理解指令。
+
+
+
+
+
+
+
+
+
+
+
 
 
 

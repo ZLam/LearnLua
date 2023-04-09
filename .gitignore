@@ -500,4 +500,5 @@ DerivedData/
 imgui.ini
 !/res/*
 /res/**/.DS_Store
+/Source/tmp
 # Custom End
