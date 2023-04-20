@@ -45,6 +45,9 @@ GC
 
 
 自己动手实现lua 读书笔记 begin
+
+lua二进制chunk
+
 lua脚本并不是直接被lua解释器解释执行,而是类似java语言那样,先由lua编译器编译为字节码,然后再交给lua虚拟机去执行
 
 一段可以被Lua解释器解释执行的代码就叫作chunk。chunk可以很小，小到只有一两条语句；也可以很大，大到包含成千上万条语句和复杂的函数定义。前面也提到过，为了获得较高的执行效率，Lua并不是直接解释执行chunk，而是先由编译器编译成内部结构（其中包含字节码等信息），然后再由虚拟机执行字节码。这种内部结构在Lua里就叫作预编译（Precompiled）chunk，由于采用了二进制格式，所以也叫二进制（Binary）chunk。
@@ -64,20 +67,9 @@ function main(...)
 end
 ```
 
-把主函数编译成函数原型后，Lua编译器会给它再添加一个头部（Header），然后一起dump成luac.out文件，这样，一份热乎的二进制chunk文件就新鲜出炉了。如下图所示。
+把主函数编译成函数原型后，Lua编译器会给它再添加一个头部（Header），然后一起dump成luac.out文件，这样，一份热乎的二进制chunk文件就新鲜出炉了。如下图所示。  
 
 ![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_20230409170544.png)
-
-
-
-
-
-
-
-
-
-
-
 
 luac命令主要有两个用途：第一，作为编译器，把Lua源文件编译成二进制chunk文件：第二，作为反编译器，分析二进制chunk，将信息输出到控制台。
 
@@ -138,6 +130,7 @@ function <D:/Workspace/LearnLua/HelloWorld/res/script/foo_bar.lua:2,2> (1 instru
 
 指令列表里的每一条指令都包含指令序号、对应行号、操作码和操作数。分号后面是luac根据指令操作数生成的注释，以便于我们理解指令。
 
+@TODO header 和 proto 的详细解析
 
 
 
@@ -155,7 +148,6 @@ function <D:/Workspace/LearnLua/HelloWorld/res/script/foo_bar.lua:2,2> (1 instru
 
 
 
-二进制chunk头部
 
 
 
@@ -164,6 +156,7 @@ function <D:/Workspace/LearnLua/HelloWorld/res/script/foo_bar.lua:2,2> (1 instru
 
 
 
+lua指令集
 
 高级编程语言虚拟机是对真实计算机的模拟和抽象。按照实现方式，虚拟机大致可以分为两类：基于栈（StackBased）和基于寄存器（RegisterBased）。
 
@@ -191,11 +184,13 @@ OpArgK类型的操作数表示常量表索引或者寄存器索引，具体可�
 
 对于上面的第二种情况，既然操作数既可以表示寄存器索引，也可以表示常量表索引，那么如何知道其究竟表示的是哪种索引呢？在iABC模式下，B和C操作数各占9个比特，如果B或C操作数属于OpArgK类型，那么就只能使用9个比特中的低8位，最高位的那个比特如果是1，则操作数表示常量表索引，否则表示寄存器索引。
 
-除了上面介绍的这几种情况，操作数也可能表示布尔值、整数值、upvalue索引、子函数索引等，这些情况都可以归到OpArgU类型里。
+除了上面介绍的这几种情况，操作数也可能表示布尔值、整数值、upvalue索引、子函数索引等，这些情况都可以归到OpArgU类型里。  
 
-![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/Xnip2023-04-03_00-58-46.jpg)
-![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/Xnip2023-04-05_21-21-26.jpg)
-![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/Xnip2023-04-05_21-20-44.jpg)
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/Xnip2023-04-03_00-58-46.jpg)  
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/Xnip2023-04-19_20-21-02.jpg)  
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/Xnip2023-04-05_21-20-44.jpg)  
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/Xnip2023-04-19_20-21-39.jpg)  
+
 编码模式有4种，其中 iABC ， iABx ， iAx 这3种要 decode 是比较简单的，直接按位取就好了。但 iAsBx 模式的 decode 会相对麻烦啲，因为 sBx 表示的是有符号整数，有符号整数的编码方式有很多种，例如 2的补码(two's complement) ， lua这边用的是叫 偏移二进制码(offset binary，也叫作excess-k)，具体来说，如果把sBx解释成无符号整数时它的值是x，那么解释成有符号整数时它的值就是x-K。那么K是什么呢？K取sBx所能表示的最大无符号整数值的一半，也就是上面代码中的MAXARG_sBx。
 
 
@@ -204,6 +199,7 @@ OpArgK类型的操作数表示常量表索引或者寄存器索引，具体可�
 
 
 lua stack
+
 栈索引
 
 lua state
@@ -223,6 +219,7 @@ lua state的常用方法 , 栈的基本操作 , 外部宿主(host)push值进栈�
 
 
 lua运算符
+
 Lua语言层面一共有25个运算符，按类别可以分为算术（Arithmetic）运算符、按位（Bitwise）运算符、比较（Comparison）运算符、逻辑（Logical）运算符、长度运算符和字符串拼接运算符。
 
 算术运算符共8个，分别是：+（加）、-（减、一元取反）、*（乘）、/（除）、//（整除）、%（取模）、^（乘方）。
@@ -258,15 +255,18 @@ print("1" << 1.0) , 输出 2
 在API层面，有4个方法专门用来支持Lua运算符。
 Arith（）方法用于执行算术和按位运算，Compare（）方法用于执行比较运算，Len（）方法用于执行取长度运算，Concat（）方法用于执行字符串拼接运算。这4个方法覆盖了除逻辑运算符之外的所有Lua运算符
 
-Arith（）方法可以执行算术和按位运算，具体的运算由参数指定，操作数则从栈顶弹出。对于二元运算，该方法会从栈顶弹出两个值进行计算，然后将结果推入栈顶。对于一元运算，该方法从栈顶弹出一个值进行计算，然后把结果推入栈顶。
-![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/Xnip2023-04-15_01-11-58.jpg)
-![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/Xnip2023-04-15_01-12-43.jpg)
+Arith（）方法可以执行算术和按位运算，具体的运算由参数指定，操作数则从栈顶弹出。对于二元运算，该方法会从栈顶弹出两个值进行计算，然后将结果推入栈顶。对于一元运算，该方法从栈顶弹出一个值进行计算，然后把结果推入栈顶。  
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/Xnip2023-04-15_01-11-58.jpg)  
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/Xnip2023-04-15_01-12-43.jpg)  
 
-Compare（）方法对指定索引处的两个值进行比较，返回结果。该方法不改变栈的状态。
+Compare（）方法对指定索引处的两个值进行比较，返回结果。该方法不改变栈的状态。  
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/Xnip2023-04-15_01-33-28.jpg)
 
-Len（）方法访问指定索引处的值，取其长度，然后推入栈顶。
+Len（）方法访问指定索引处的值，取其长度，然后推入栈顶。  
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/Xnip2023-04-15_01-35-12.jpg)
 
-Concat（）方法从栈顶弹出n个值，对这些值进行拼接，然后把结果推入栈顶。
+Concat（）方法从栈顶弹出n个值，对这些值进行拼接，然后把结果推入栈顶。  
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/Xnip2023-04-15_01-40-49.jpg)
 
 
 
@@ -281,6 +281,19 @@ Concat（）方法从栈顶弹出n个值，对这些值进行拼接，然后把�
 
 
 lua VM
+
+我们在读一本书的时候，往往无法一口气读完，如果中间累了，或者需要停下来思考问题，或者有其他事情需要处理，就暂时把当前页数记下来，合上书，然后休息、思考或者处理问题，然后再回来继续阅读。我们也经常会跳到之前已经读过的某一页，去回顾一些内容，或者翻到后面还没有读到的某一页，去预览一些内容，然后再回到当前页继续阅读。
+就如同人类需要使用大脑（或者书签）去记录正在阅读的书籍的页数一样，计算机也需要一个程序计数器（ProgramCounter，简称PC）来记录正在执行的指令。与人类不同的是，计算机不需要休息和思考，也没有烦恼的事情需要处理（但需要等待IO），一旦接通电源就会不知疲倦地计算PC、取出当前指令、执行指令，如此往复直到指令全部处理完毕或者断电为止。
+
+和真实的机器一样，Lua虚拟机也需要使用程序计数器。如果暂时忽略函数调用等细节，可以使用如下伪代码来描述Lua虚拟机的内部循环。
+
+```txt
+loop {
+	计算PC
+	取出当前指令
+	执行当前指令
+}
+```
 
 
 
