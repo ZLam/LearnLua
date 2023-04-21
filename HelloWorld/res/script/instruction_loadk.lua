@@ -1,0 +1,1 @@
+local a ,b, c, d, e = nil, 1, 2, 2, "foo"
