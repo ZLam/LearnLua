@@ -283,6 +283,7 @@ Concat（）方法从栈顶弹出n个值，对这些值进行拼接，然后把�
 lua VM
 
 我们在读一本书的时候，往往无法一口气读完，如果中间累了，或者需要停下来思考问题，或者有其他事情需要处理，就暂时把当前页数记下来，合上书，然后休息、思考或者处理问题，然后再回来继续阅读。我们也经常会跳到之前已经读过的某一页，去回顾一些内容，或者翻到后面还没有读到的某一页，去预览一些内容，然后再回到当前页继续阅读。
+
 就如同人类需要使用大脑（或者书签）去记录正在阅读的书籍的页数一样，计算机也需要一个程序计数器（ProgramCounter，简称PC）来记录正在执行的指令。与人类不同的是，计算机不需要休息和思考，也没有烦恼的事情需要处理（但需要等待IO），一旦接通电源就会不知疲倦地计算PC、取出当前指令、执行指令，如此往复直到指令全部处理完毕或者断电为止。
 
 和真实的机器一样，Lua虚拟机也需要使用程序计数器。如果暂时忽略函数调用等细节，可以使用如下伪代码来描述Lua虚拟机的内部循环。
@@ -294,6 +295,185 @@ loop {
 	执行当前指令
 }
 ```
+
+```txt
+另外再定义些方法 , 因为除了上面对栈的操作和运算符的方法 , 还需要一些PC的操作和对常量表操作的方法才能进一步实现虚拟机
+PC()int//返回当前PC（仅测试用）
+AddPC(nint)//修改PC（用于实现跳转指令）
+Fetch()uint32//取出当前指令；将PC指向下一条指令
+GetConst(idxint)//将指定常量推入栈顶
+GetRK(rkint)//将指定常量或栈值推入栈顶
+```
+
+其中GetRK方法相对复杂点 , GetRK（）方法根据情况调用GetConst（）方法把某个常量推入栈顶，或者调用PushValue（）方法把某个索引处的栈值推入栈顶，代码如下所示。
+
+```txt
+func (self *luaState) GetRK(rk int)
+{
+	if rk > 0xff
+	{
+		// constant
+		self.GetConst(rk & 0xff)
+	}
+	else
+	{
+		// register
+		self.PushValue(rk + 1)
+	}
+}
+```
+
+我们马上就会看到，传递给GetRK（）方法的参数实际上是iABC模式指令里的OpArgK类型参数。由第3章可知，这种类型的参数一共占9个比特。如果最高位是1，那么参数里存放的是常量表索引，把最高位去掉就可以得到索引值；否则最高位是0，参数里存放的就是寄存器索引值。但是请读者留意，Lua虚拟机指令操作数里携带的寄存器索引是从0开始的，而LuaAPI里的栈索引是从1开始的，所以当需要把寄存器索引当成栈索引使用时，要对寄存器索引加1。
+
+先将指令大致分成4类 , 运算符相关 , 加载相关 , for循环相关 , 其他相关(MOVE , JMP)
+
+1 , 其他相关指令 , MOVE
+
+作用 , MOVE指令（iABC模式）把源寄存器（索引由操作数B指定）里的值移动到目标寄存器（索引由操作数A指定）里。
+
+```txt
+MOVE指令常用于局部变量赋值和参数传递，以局部变量赋值为例
+
+./Luac.exe -p -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_move.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_move.lua:0,0> (3 instructions at 00A10908)
+0+ params, 5 slots, 1 upvalue, 5 locals, 0 constants, 0 functions
+        1       [1]     LOADNIL         0 4
+        2       [2]     MOVE            3 1
+        3       [2]     RETURN          0 1
+```
+
+虽然说是MOVE指令，但实际上叫作COPY指令可能更合适一些，因为源寄存器的值还原封不动待在原地。
+
+我们先解码指令，得到目标寄存器和源寄存器索引，然后把它们转换成栈索引，最后调用LuaAPI提供的Copy（）方法拷贝栈值。如前文所述，寄存器索引加1才是相应的栈索引，后面不再赘述。
+
+通过MOVE指令我们还可以看到，Lua代码里的局部变量实际就存在寄存器里。由于MOVE等指令使用操作数A（占8个比特）来表示目标寄存器索引，所以Lua函数使用的局部变量不能超过255个。实际上Lua编译器把函数的局部变量数限制在了200个以内，如果超过这个数量，函数就无法编译。
+
+2 , 其他相关指令 , JMP
+
+作用 , JMP指令（iAsBx模式）执行无条件跳转(操作数sBx值作为索引 , 操作数A和Upvalue有关)。该指令往往和后面要介绍的TEST等指令配合使用，但是也可能会单独出现，比如Lua也支持标签和goto语句（虽然强烈不建议使用）。
+
+```txt
+./Luac.exe -p -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_jmp.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_jmp.lua:0,0> (2 instructions at 013408D0)
+0+ params, 2 slots, 1 upvalue, 0 locals, 0 constants, 0 functions
+        1       [1]     JMP             0 -1    ; to 1
+        2       [2]     RETURN          0 1
+```
+
+3 , 加载相关指令(加载指令用于把nil值、布尔值或者常量表里的常量值加载到寄存器里) , LOADNIL
+
+作用 , LOADNIL指令（iABC模式）用于给连续n个寄存器放置nil值。寄存器的起始索引由操作数A指定，寄存器数量则由操作数B指定，操作数C没有用。
+
+```txt
+在Lua代码里，局部变量的默认初始值是nil。LOADNIL指令常用于给连续n个局部变量设置初始值，下面是一个例子。
+
+./Luac.exe -p -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_loadnil.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_loadnil.lua:0,0> (2 instructions at 00C70918)
+0+ params, 5 slots, 1 upvalue, 5 locals, 0 constants, 0 functions
+        1       [1]     LOADNIL         0 4
+        2       [1]     RETURN          0 1
+```
+
+由第3章可知，Lua编译器在编译函数生成指令表时，会把指令执行阶段所需要的寄存器数量预先算好，保存在函数原型里。这里假定虚拟机在执行第一条指令前，已经根据这一信息调用SetTop（）方法保留了必要数量的栈空间。有了这个假设，我们就可以先调用PushNil（）方法往栈顶推入一个nil值，然后连续调用Copy（）方法将nil值复制到指定寄存器中，最后调用Pop（）方法把一开始推入栈顶的那个nil值弹出，让栈顶指针恢复原状。
+
+4 , 加载相关指令 , LOADBOOL
+
+作用 , LOADBOOL指令（iABC模式）给单个寄存器设置布尔值。寄存器索引由操作数A指定，布尔值由寄存器B指定（0代表false，非0代表true），如果寄存器C非0则跳过下一条指令。
+
+```txt
+./Luac.exe -p -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_loadbool.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_loadbool.lua:0,0> (6 instructions at 01250988)
+0+ params, 5 slots, 1 upvalue, 5 locals, 0 constants, 0 functions
+        1       [1]     LOADNIL         0 4
+        2       [2]     LT              1 1 0
+        3       [2]     JMP             0 1     ; to 5
+        4       [2]     LOADBOOL        2 0 1
+        5       [2]     LOADBOOL        2 1 0
+        6       [2]     RETURN          0 1
+```
+
+5 , 加载相关指令 , LOADK
+
+作用 , LOADK指令（iABx模式）将常量表里的某个常量加载到指定寄存器，寄存器索引由操作数A指定，常量表索引由操作数Bx指定。
+
+```txt
+在Lua函数里出现的字面量（主要是数字和字符串）会被Lua编译器收集起来，放进常量表里。以下面的局部变量赋值语句为例。
+
+./Luac.exe -p -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_loadk.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_loadk.lua:0,0> (6 instructions at 00F208E0)
+0+ params, 5 slots, 1 upvalue, 5 locals, 3 constants, 0 functions
+        1       [1]     LOADNIL         0 0
+        2       [1]     LOADK           1 -1    ; 1
+        3       [1]     LOADK           2 -2    ; 2
+        4       [1]     LOADK           3 -2    ; 2
+        5       [1]     LOADK           4 -3    ; "foo"
+        6       [1]     RETURN          0 1
+```
+
+我们先调用前面准备好的GetConst（）方法把指定常量推入栈顶，然后调用Replace（）方法把它移动到指定索引处。我们知道操作数Bx占18个比特，能表示的最大无符号整数是262143，大部分Lua函数的常量表大小都不会超过这个数，所以这个限制通常不是什么问题。不过Lua也经常被当作数据描述语言使用，所以常量表大小可能超过这个限制也并不稀奇。为了应对这种情况，Lua还提供了一条LOADKX指令。
+
+6 , 加载相关指令 , LOADKX
+
+作用 , LOADKX指令（也是iABx模式）需要和EXTRAARG指令（iAx模式）搭配使用，用后者的Ax操作数来指定常量索引。Ax操作数占26个比特，可以表达的最大无符号整数是67108864，可以满足大部分情况了。
+
+7 , 运算符相关指令 , 二元运算
+
+作用 , 二元算术运算指令（iABC模式），对两个寄存器或常量值（索引由操作数B和C指定）进行运算，将结果放入另一个寄存器（索引由操作数A指定）。
+
+```txt
+以加法运算符为例。
+
+./Luac.exe -p -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_add.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_add.lua:0,0> (3 instructions at 01400908)
+0+ params, 5 slots, 1 upvalue, 5 locals, 1 constant, 0 functions
+        1       [1]     LOADNIL         0 4
+        2       [2]     ADD             4 1 -1  ; - 100
+        3       [2]     RETURN          0 1
+```
+
+我们先调用前面准备好的GetRK（）方法把两个操作数推入栈顶，然后调用Arith（）方法进行算术运算。算术运算完毕之后，操作数已经从栈顶弹出，取而代之的是运算结果，我们调用Replace（）方法把它移动到指定寄存器即可。
+
+7 , 运算符相关指令 , 一元运算
+
+作用 , 一元算术运算指令（iABC模式），对操作数B所指定的寄存器里的值进行运算，然后把结果放入操作数A所指定的寄存器中，操作数C没用。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
