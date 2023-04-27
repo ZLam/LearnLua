@@ -421,7 +421,7 @@ main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_loadk.lua:0,0>
 
 作用 , LOADKX指令（也是iABx模式）需要和EXTRAARG指令（iAx模式）搭配使用，用后者的Ax操作数来指定常量索引。Ax操作数占26个比特，可以表达的最大无符号整数是67108864，可以满足大部分情况了。
 
-7 , 运算符相关指令 , 二元运算
+7 , 运算符相关指令 , 二元运算(ADD , SUB , MUL , MOD , POW , DIV , IDIV , BAND , BOR , BXOR , SHL , SHR)
 
 作用 , 二元算术运算指令（iABC模式），对两个寄存器或常量值（索引由操作数B和C指定）进行运算，将结果放入另一个寄存器（索引由操作数A指定）。
 
@@ -439,9 +439,137 @@ main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_add.lua:0,0> (
 
 我们先调用前面准备好的GetRK（）方法把两个操作数推入栈顶，然后调用Arith（）方法进行算术运算。算术运算完毕之后，操作数已经从栈顶弹出，取而代之的是运算结果，我们调用Replace（）方法把它移动到指定寄存器即可。
 
-7 , 运算符相关指令 , 一元运算
+8 , 运算符相关指令 , 一元运算(UNM , BNOT)
 
 作用 , 一元算术运算指令（iABC模式），对操作数B所指定的寄存器里的值进行运算，然后把结果放入操作数A所指定的寄存器中，操作数C没用。
+
+```txt
+以按位取反运算符为例。
+
+./Luac.exe -p -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_bnot.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_bnot.lua:0,0> (3 instructions at 00CA08D0)
+0+ params, 5 slots, 1 upvalue, 5 locals, 0 constants, 0 functions
+        1       [1]     LOADNIL         0 4
+        2       [2]     BNOT            3 1
+        3       [2]     RETURN          0 1
+```
+
+9 , 长度指令 , LEN
+
+作用 , LEN指令（iABC模式）进行的操作和一元算术运算指令类似 , 对操作数B所指定的寄存器里的值取其长度 , 然后把结果放入操作数A所指定的寄存器中 , 操作数C没用
+
+```txt
+LEN指令对应Lua语言里的长度运算符，如下所示。
+
+./Luac.exe -p -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_len.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_len.lua:0,0> (3 instructions at 01572F80)
+0+ params, 5 slots, 1 upvalue, 5 locals, 0 constants, 0 functions
+        1       [1]     LOADNIL         0 4
+        2       [2]     LEN             3 1
+        3       [2]     RETURN          0 1
+```
+
+10 , 拼接指令 , CONCAT
+
+作用 , CONCAT指令（iABC模式），将连续n个寄存器（起止索引分别由操作数B和C指定）里的值拼接，将结果放入另一个寄存器（索引由操作数A指定）。
+
+```txt
+CONCAT指令对应Lua语言里的拼接运算符，如下所示。
+
+./Luac.exe -p -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_concat.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_concat.lua:0,0> (6 instructions at 005B07C8)
+0+ params, 5 slots, 1 upvalue, 2 locals, 0 constants, 0 functions
+        1       [1]     LOADNIL         0 1
+        2       [2]     MOVE            2 0
+        3       [2]     MOVE            3 0
+        4       [2]     MOVE            4 0
+        5       [2]     CONCAT          1 2 4
+        6       [2]     RETURN          0 1
+```
+
+11 , 比较指令
+
+作用 , 比较指令（iABC模式），比较寄存器或常量表里的两个值（索引分别由操作数B和C指定），如果比较结果和操作数A（转换为布尔值）匹配，则跳过下一条指令。比较指令不改变寄存器状态
+
+```txt
+比较指令对应Lua语言里的比较运算符（当用于赋值时，需要和LOADBOOL指令搭配使用），以等于运算符为例。
+
+./Luac.exe -p -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_eq.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_eq.lua:0,0> (6 instructions at 011F0770)
+0+ params, 5 slots, 1 upvalue, 5 locals, 1 constant, 0 functions
+        1       [1]     LOADNIL         0 4
+        2       [2]     EQ              1 1 -1  ; - "foo"
+        3       [2]     JMP             0 1     ; to 5
+        4       [2]     LOADBOOL        0 0 1
+        5       [2]     LOADBOOL        0 1 0
+        6       [2]     RETURN          0 1
+```
+
+我们先调用GetRK（）方法把两个要比较的值推入栈顶，然后调用Compare（）方法执行比较运算，如果比较结果和操作数A一致则把PC加1。由于Compare（）方法并没有把栈顶值弹出，所以我们需要自己调用Pop（）方法清理栈顶。
+
+12 , 逻辑运算指令 , NOT
+
+作用 , NOT指令（iABC模式）进行的操作和一元算术运算指令类似 , 对操作数B所指定的寄存器里的值进行逻辑非运算 , 然后把结果放入操作数A所指定的寄存器中 , 操作数C没用
+
+```txt
+NOT指令对应Lua语言里的逻辑非运算符，如下所示。
+
+./Luac.exe -p -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_not.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_not.lua:0,0> (3 instructions at 00E00740)
+0+ params, 5 slots, 1 upvalue, 5 locals, 0 constants, 0 functions
+        1       [1]     LOADNIL         0 4
+        2       [2]     NOT             3 1
+        3       [2]     RETURN          0 1
+```
+
+13 , 逻辑运算指令 , TESTSET
+
+作用 , TESTSET指令（iABC模式），判断寄存器B（索引由操作数B指定）中的值转换为布尔值之后是否和操作数C表示的布尔值一致，如果一致则将寄存器B中的值复制到寄存器A（索引由操作数A指定）中，否则跳过下一条指令。
+
+```txt
+TESTSET指令对应Lua语言里的逻辑与(AND)和逻辑或(OR)运算符，以逻辑与为例。
+
+./Luac.exe -p -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_testset.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_testset.lua:0,0> (5 instructions at 00860798)
+0+ params, 5 slots, 1 upvalue, 5 locals, 0 constants, 0 functions
+        1       [1]     LOADNIL         0 4
+        2       [2]     TESTSET         1 3 0
+        3       [2]     JMP             0 1     ; to 5
+        4       [2]     MOVE            1 4
+        5       [2]     RETURN          0 1
+```
+
+14 , 逻辑运算指令 , TEST
+
+作用 , TEST指令（iABC模式），判断寄存器A（索引由操作数A指定）中的值转换为布尔值之后是否和操作数C表示的布尔值一致，如果一致，则跳过下一条指令。TEST指令不使用操作数B，也不改变寄存器状态
+
+```txt
+TEST指令是TESTSET指令的特殊形式，如下所示。
+
+./Luac.exe -p -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_test.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_test.lua:0,0> (5 instructions at 008307C8)
+0+ params, 5 slots, 1 upvalue, 5 locals, 0 constants, 0 functions
+        1       [1]     LOADNIL         0 4
+        2       [2]     TEST            1 0
+        3       [2]     JMP             0 1     ; to 5
+        4       [2]     MOVE            1 4
+        5       [2]     RETURN          0 1
+```
+
+
+
+
+
+
+
+
 
 
 
