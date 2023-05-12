@@ -36,6 +36,7 @@ GC
 
 浮点数格式(IEEE754)
 
+浮点字节（FloatingPointByte）的编码方式
 
 
 
@@ -198,7 +199,7 @@ OpArgK类型的操作数表示常量表索引或者寄存器索引，具体可�
 
 
 
-lua stack
+lua stack @TODO
 
 栈索引
 
@@ -563,6 +564,52 @@ main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_test.lua:0,0> 
         5       [2]     RETURN          0 1
 ```
 
+15 , FOR循环指令 @TODO
+
+作用 , Lua语言的for循环语句有两种形式：数值（Numerical）形式和通用（Generic）形式。数值for循环用于按一定步长遍历某个范围内的数值，通用for循环主要用于遍历表。
+
+这里目前主要讨论数值形式
+
+数值for循环需要借助两条指令来实现：FORPREP和FORLOOP。
+
+```txt
+下面是数值形式循环的例子
+
+./Luac.exe -p -l -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_for_numerical.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_for_numerical.lua:0,0> (8 instructions at 007E40E8)
+0+ params, 5 slots, 1 upvalue, 4 locals, 4 constants, 0 functions
+        1       [1]     LOADK           0 -1    ; 1
+        2       [1]     LOADK           1 -2    ; 2
+        3       [1]     LOADK           2 -3    ; 100
+        4       [1]     FORPREP         0 2     ; to 7
+        5       [2]     GETTABUP        4 0 -4  ; _ENV "f"
+        6       [2]     CALL            4 1 1
+        7       [1]     FORLOOP         0 -3    ; to 5
+        8       [3]     RETURN          0 1
+constants (4) for 007E40E8:
+        1       1
+        2       2
+        3       100
+        4       "f"
+locals (4) for 007E40E8:
+        0       (for index)     4       8
+        1       (for limit)     4       8
+        2       (for step)      4       8
+        3       i       5       7
+upvalues (1) for 007E40E8:
+        0       _ENV    1       0
+```
+
+@REMIND 留意下面的示意图中的 step 和 limit 中的值应该是搞反了..
+
+从反编译输出的局部变量表可知，Lua编译器为了实现for循环，使用了三个特殊的局部变量，这三个特殊局部变量的名字里都包含圆括号（属于非法标识符），这样就避免了和程序中出现的普通变量重名的可能。由名字可知，这三个局部变量分别存放数值、限制和步长，并且在循环开始之前就已经预先初始化好了（对应三条LOADK指令）。
+
+此外我们还可以看出，这三个特殊的变量正好对应前面伪代码中的R（A）、R（A+1）和R（A+2）这三个寄存器，我们自己在for循环里定义的变量i则对应R（A+3）寄存器。由此可知，FORPREP指令执行的操作其实就是在循环开始之前预先给数值减去步长，然后跳转到FORLOOP指令正式开始循环，如下图所示。
+
+FORLOOP指令则是先给数值加上步长，然后判断数值是否还在范围之内。如果已经超出范围，则循环结束；若未超过范围则把数值拷贝给用户定义的局部变量，然后跳转到循环体内部开始执行具体的代码块。上面例子中的第一次循环可以用下图表示。
+
+还有一点需要解释，也就是FORLOOP指令伪代码中的“<？=”符号。当步长是正数时，这个符号的含义是“<=”，也就是说继续循环的条件是数值不大于限制；当步长是负数时，这个符号的含义是“>=”，循环继续的条件就变成了数值不小于限制。
 
 
 
@@ -583,6 +630,168 @@ main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_test.lua:0,0> 
 
 
 
+
+lua Table
+
+Lua官方在5.0以前也是简单使用哈希表来实现Lua表的，不过由于在实践中数组的使用非常频繁，所以为了专门优化数组的效率，Lua5.0开始改用混合数据结构来实现表。简单来说，这种混合数据结构同时包含了数组和哈希表两部分。如果表的键是连续的正整数，那么哈希表就是空的，值全部按索引存储在数组里。这样，Lua数组无论是在空间利用率上（不需要显式存储键），还是时间效率上（可以按索引存取值，不需要计算哈希码）都和真正的数组相差无几。如果表并没有被当成数组使用，那么数据完全存储在哈希表里，数组部分是空的，也没什么损失。
+
+书中对于 table 的实现是通过 go 语言实现的, 所以具体实现会相对简单, 不像 c 那么复杂. 首先 table 很强大, 使用上它能以 array 的方式使用, 也能以 map 的方式使用. 所以它内部实现同时需要有 array 的逻辑, 也有 map 的逻辑. 主要要留意的地方是, 1, 构造 table, 里面可能需要同时创建 array 的容器 和 map 的容器. 2, 除了 nil 都能作为 table 的key. 3, get 方法, 用什么逻辑判断是从 array 取还是从 map 取(如果 key 是数字, 先尝试从 array 取, 取不到再从 map 取, key 不是数字, 直接从 map 取). 4, set 方法, 同样需要用什么逻辑判断是 set 进 array 还是 map, 还有空洞的问题, 例如, 一个 table {[1]=1,[2]=2,[4]=4} 本身是以 map 的方式使用, 可能通过增加 key 变成 {[1]=1,[2]=2,[3]=3,[4]=4} 就能以 array 的方式使用. 5, 还有对于 array 和 map 的迭代器.
+
+table 相关指令
+
+表相关指令一共有4条：NEWTABLE指令创建空表，GETTABLE指令根据键从表里取值，SETTABLE指令根据键往表里写入值，SETLIST指令按索引批量更新数组元素。
+
+1, TABLE相关指令, NEWTABLE
+
+作用, NEWTABLE指令（iABC模式）创建空表，并将其放入指定寄存器。寄存器索引由操作数A指定，表的初始数组容量和哈希表容量分别由操作数B和C指定。
+
+```txt
+Lua代码里的每一条表构造器语句都会产生一条NEWTABLE指令，下面是一个例子。
+
+./Luac.exe -p -l -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_newtable.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_newtable.lua:0,0> (6 instructions at 0105F298)
+0+ params, 5 slots, 1 upvalue, 4 locals, 4 constants, 0 functions
+        1       [1]     LOADNIL         0 3
+        2       [2]     NEWTABLE        4 0 2
+        3       [2]     SETTABLE        4 -1 -2 ; "x" 1
+        4       [2]     SETTABLE        4 -3 -4 ; "y" 2
+        5       [2]     MOVE            1 4
+        6       [2]     RETURN          0 1
+constants (4) for 0105F298:
+        1       "x"
+        2       1
+        3       "y"
+        4       2
+locals (4) for 0105F298:
+        0       a       2       7
+        1       b       2       7
+        2       c       2       7
+        3       d       2       7
+upvalues (1) for 0105F298:
+        0       _ENV    1       0
+```
+
+其他都很好理解，但是这个Fb2int（）函数起到什么作用呢？因为NEWTABLE指令是iABC模式，操作数B和C只有9个比特，如果当作无符号整数的话，最大也不能超过512。但是我们在前面也提到过，因为表构造器便捷实用，所以Lua也经常被用来描述数据（类似JSON），如果有很大的数据需要写成表构造器，但是表的初始容量又不够大，就容易导致表频繁扩容从而影响数据加载效率。
+
+为了解决这个问题，NEWTABLE指令的B和C操作数使用了一种叫作浮点字节（FloatingPointByte）的编码方式。这种编码方式和浮点数的编码方式类似，只是仅用一个字节。具体来说，如果把某个字节用二进制写成eeeeexxx，那么当eeeee==0时该字节表示的整数就是xxx，否则该字节表示的整数是（1xxx）*2^（eeeee1）。
+
+2, TABLE相关指令, GETTABLE
+
+作用, GETTABLE指令（iABC模式）根据键从表里取值，并放入目标寄存器中。其中表位于寄存器中，索引由操作数B指定；键可能位于寄存器中，也可能在常量表里，索引由操作数C指定；目标寄存器索引则由操作数A指定。
+
+```txt
+GETTABLE指令对应Lua代码里的表索引取值操作，如下所示。
+
+./Luac.exe -p -l -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_gettable.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_gettable.lua:0,0> (4 instructions at 015A0768)
+0+ params, 5 slots, 1 upvalue, 5 locals, 1 constant, 0 functions
+        1       [1]     LOADNIL         0 4
+        2       [2]     GETTABLE        3 1 2
+        3       [3]     GETTABLE        3 1 -1  ; 100
+        4       [3]     RETURN          0 1
+constants (1) for 015A0768:
+        1       100
+locals (5) for 015A0768:
+        0       a       2       5
+        1       t       2       5
+        2       k       2       5
+        3       v       2       5
+        4       e       2       5
+upvalues (1) for 015A0768:
+        0       _ENV    1       0
+```
+
+3, TABLE相关指令, SETTABLE
+
+作用, SETTABLE指令（iABC模式）根据键往表里赋值。其中表位于寄存器中，索引由操作数A指定；键和值可能位于寄存器中，也可能在常量表里，索引分别由操作数B和C指定。
+
+```txt
+SETTABLE指令对应Lua代码里的表索引赋值操作，如下所示。
+
+./Luac.exe -p -l -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_settable.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_settable.lua:0,0> (4 instructions at 011A07A0)
+0+ params, 5 slots, 1 upvalue, 5 locals, 2 constants, 0 functions
+        1       [1]     LOADNIL         0 4
+        2       [2]     SETTABLE        1 2 3
+        3       [3]     SETTABLE        1 -1 -2 ; 100 "foo"
+        4       [3]     RETURN          0 1
+constants (2) for 011A07A0:
+        1       100
+        2       "foo"
+locals (5) for 011A07A0:
+        0       a       2       5
+        1       t       2       5
+        2       k       2       5
+        3       v       2       5
+        4       e       2       5
+upvalues (1) for 011A07A0:
+        0       _ENV    1       0
+```
+
+4, TABLE相关指令, SETLIST
+
+作用, SETTABLE是通用指令，每次只处理一个键值对，具体操作交给表去处理，并不关心实际写入的是表的哈希部分还是数组部分。SETLIST指令（iABC模式）则是专门给数组准备的，用于按索引批量设置数组元素。其中数组位于寄存器中，索引由操作数A指定；需要写入数组的一系列值也在寄存器中，紧挨着数组，数量由操作数B指定；数组起始索引则由操作数C指定。
+
+那么数组的索引到底是怎么计算的呢？这里的情况和GETTABLE指令有点类似。因为C操作数只有9个比特，所以直接用它表示数组索引显然不够用。这里的解决办法是让C操作数保存批次数，然后用批次数乘上批大小（对应伪代码中的FPF）就可以算出数组起始索引。以默认的批大小50为例，C操作数能表示的最大索引就是扩大到了25600（50*512）。
+
+但是如果数组长度大于25600呢？是不是后面的元素就只能用SETTABLE指令设置了？也不是。这种情况下SETLIST指令后面会跟一条EXTRAARG指令，用其Ax操作数来保存批次数。综上所述，如果指令的C操作数大于0，那么表示的是批次数加1，否则，真正的批次数存放在后续的EXTRAARG指令里。
+
+```txt
+下面我们结合一个简单的例子来观察一下SETLIST指令。
+
+./Luac.exe -p -l -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_setlist.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_setlist.lua:0,0> (7 instructions at 00E007C8)
+0+ params, 5 slots, 1 upvalue, 1 local, 4 constants, 0 functions
+        1       [1]     NEWTABLE        0 4 0
+        2       [1]     LOADK           1 -1    ; 1
+        3       [1]     LOADK           2 -2    ; 2
+        4       [1]     LOADK           3 -3    ; 3
+        5       [1]     LOADK           4 -4    ; 4
+        6       [1]     SETLIST         0 4 1   ; 1
+        7       [1]     RETURN          0 1
+constants (4) for 00E007C8:
+        1       1
+        2       2
+        3       3
+        4       4
+locals (1) for 00E007C8:
+        0       t       7       8
+upvalues (1) for 00E007C8:
+        0       _ENV    1       0
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+函数调用
 
 
 
