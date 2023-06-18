@@ -807,6 +807,172 @@ lua 函数调用
 
 先说说lua函数的特点 , 首先 , 当然能支持固定参数列表 , 同时也能支持变长参数列表 . 固定参数列表时 , 如果入参数量小于参数列表 , 剩下的参数置为nil , 如果入餐数量大于参数列表 , 多余的入参被忽略 . 变长参数列表时 , 多余的入餐就会收纳在vararg里 . 然后 , lua函数支持多个返回值 . 如果接收个数小于返回值个数 , 那么多余的返回值忽略 . 如果接收个数大于返回值个数 , 那么剩下的接收变量置为nil
 
+主要要分清2个东西，一个是调用栈，一个是调用帧。调用栈的结构实现在 lua_state 里，实际就是调度函数的过程，链表结构，链表头部是栈顶。调用帧的结构实现在 lua_stack 里，实际就是处理函数执行的过程，根据指令在value栈上处理数据。大概如下图。
+
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202023-06-18%20152923.png)
+
+书中执行一个函数的过程（就是执行一个 closure 的过程）并不是一直在同一个 stack 上进行的。例如，当前 stack_1 上有函数funcA，参数params_1，参数params_2，那执行funcA(params_1, params_2)的过程是，先创建一个新的stack_2（表示栈帧），然后 stack_1 pop出funcA，params_1，params_2一共3个value，新的 stack_2 push入params_1，params_2一共2个value，接着实际上是在新的 stack_2 上执行funcA函数要处理的逻辑，执行完指令后，stack_2上只有返回值，最后把stack_2上的返回值pop到stack_1里，完成一次函数执行。大概如下图（具体看书350页，为什么要创一个stack上执行，而不是在当前stack上，应该是函数的通用设计就是如此吧，进栈出栈，函数现场等。。。具体官方C版本怎样实现要看源码 @TODO）
+
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/closure_01.drawio.png)
+
+函数调用指令
+
+1，函数调用指令， CLOSURE
+
+作用，CLOSURE指令（iBx模式）把当前Lua函数的子函数原型实例化为闭包，放入由操作数A指定的寄存器中。子函数原型来自于当前函数原型的子函数原型表，索引由操作数Bx指定。
+
+所谓的函数原型实例化，实际就是通过二进制chunk的信息创建closure
+
+```txt
+CLOSURE指令对应Lua脚本里的函数定义语句或者表达式，下面是一个简单的例子。
+
+./Luac.exe -p -l -l /D/Workspace/LearnLua/HelloWorld/res/script/instruction_closure.lua
+
+main <D:/Workspace/LearnLua/HelloWorld/res/script/instruction_closure.lua:0,0> (4 instructions at 006D1748)
+0+ params, 5 slots, 1 upvalue, 5 locals, 0 constants, 2 functions
+        1       [1]     LOADNIL         0 2
+        2       [2]     CLOSURE         3 0     ; 006D5140
+        3       [3]     CLOSURE         4 1     ; 006D5030
+        4       [3]     RETURN          0 1
+constants (0) for 006D1748:
+locals (5) for 006D1748:
+        0       a       2       5
+        1       b       2       5
+        2       c       2       5
+        3       f       3       5
+        4       g       4       5
+upvalues (1) for 006D1748:
+        0       _ENV    1       0
+
+function <D:/Workspace/LearnLua/HelloWorld/res/script/instruction_closure.lua:2,2> (1 instruction at 006D5140)
+0 params, 2 slots, 0 upvalues, 0 locals, 0 constants, 0 functions
+        1       [2]     RETURN          0 1
+constants (0) for 006D5140:
+locals (0) for 006D5140:
+upvalues (0) for 006D5140:
+
+function <D:/Workspace/LearnLua/HelloWorld/res/script/instruction_closure.lua:3,3> (1 instruction at 006D5030)
+0 params, 2 slots, 0 upvalues, 0 locals, 0 constants, 0 functions
+        1       [3]     RETURN          0 1
+constants (0) for 006D5030:
+locals (0) for 006D5030:
+upvalues (0) for 006D5030:
+```
+
+2，函数调用指令， CALL
+
+作用，CALL指令（iABC模式）调用Lua函数。其中被调函数位于寄存器中，索引由操作数A指定。需要传递给被调函数的参数值也在寄存器中，紧挨着被调函数，数量由操作数B指定。函数调用结束后，原先存放函数和参数值的寄存器会被返回值占据，具体有多少个返回值则由操作数C指定。
+
+（大概执行流程类似上面funcA的例子，但需要考虑多个返回值的情况，还有就是对书里代码的一些疑惑，其中一处是函数逻辑执行完后，返回值已经pop回栈上，但代码里还用replace接口处理了下，感觉有点多余或者我有些情况没想到。。）
+
+```txt
+CALL指令对应Lua脚本里的函数调用语句或者表达式，下面是一个简单的例子。
+
+./Luac.exe -p -l -l /D/Workspace/LearnLua/HelloWorld/res/script/instruction_call.lua
+
+main <D:/Workspace/LearnLua/HelloWorld/res/script/instruction_call.lua:0,0> (7 instructions at 00EA1778)
+0+ params, 5 slots, 1 upvalue, 3 locals, 5 constants, 0 functions
+        1       [1]     GETTABUP        0 0 -1  ; _ENV "f"
+        2       [1]     LOADK           1 -2    ; 1
+        3       [1]     LOADK           2 -3    ; 2
+        4       [1]     LOADK           3 -4    ; 3
+        5       [1]     LOADK           4 -5    ; 4
+        6       [1]     CALL            0 5 4
+        7       [1]     RETURN          0 1
+constants (5) for 00EA1778:
+        1       "f"
+        2       1
+        3       2
+        4       3
+        5       4
+locals (3) for 00EA1778:
+        0       a       7       8
+        1       b       7       8
+        2       c       7       8
+upvalues (1) for 00EA1778:
+        0       _ENV    1       0
+
+// 多返回值情况 留意 B C 操作数
+./Luac.exe -p -l -l /D/Workspace/LearnLua/HelloWorld/res/script/instruction_call.lua
+
+main <D:/Workspace/LearnLua/HelloWorld/res/script/instruction_call.lua:0,0> (7 instructions at 0137E878)
+0+ params, 4 slots, 1 upvalue, 0 locals, 4 constants, 0 functions
+        1       [6]     GETTABUP        0 0 -1  ; _ENV "f"
+        2       [6]     LOADK           1 -2    ; 1
+        3       [6]     LOADK           2 -3    ; 2
+        4       [6]     GETTABUP        3 0 -4  ; _ENV "g"
+        5       [6]     CALL            3 1 0
+        6       [6]     CALL            0 0 1
+        7       [6]     RETURN          0 1
+constants (4) for 0137E878:
+        1       "f"
+        2       1
+        3       2
+        4       "g"
+locals (0) for 0137E878:
+upvalues (1) for 0137E878:
+        0       _ENV    1       0
+```
+
+3，函数调用指令， RETURN
+
+作用，RETURN指令（iABC模式）把存放在连续多个寄存器里的值返回给主调函数。其中第一个寄存器的索引由操作数A指定，寄存器数量由操作数B指定，操作数C没用。
+
+我们需要将返回值推入栈顶。如果操作数B等于1，则不需要返回任何值；如果操作数B大于1，则需要返回B-1个值，这些值已经在寄存器里了，循环调用PushValue（）方法复制到栈顶即可。如果操作数B等于0，则一部分返回值已经在栈顶了，调用_fixStack（）函数把另一部分也推入栈顶。
+
+```txt
+RETURN指令对应Lua脚本里的return语句，下面是一个简单的例子。
+
+./Luac.exe -p -l -l /D/Workspace/LearnLua/HelloWorld/res/script/instruction_return.lu
+a
+
+main <D:/Workspace/LearnLua/HelloWorld/res/script/instruction_return.lua:0,0> (6 instructions at 01312D60)
+0+ params, 5 slots, 1 upvalue, 2 locals, 1 constant, 0 functions
+        1       [1]     LOADNIL         0 1
+        2       [2]     LOADK           2 -1    ; 1
+        3       [2]     MOVE            3 0
+        4       [2]     MOVE            4 1
+        5       [2]     RETURN          2 4
+        6       [2]     RETURN          0 1
+constants (1) for 01312D60:
+        1       1
+locals (2) for 01312D60:
+        0       a       2       7
+        1       b       2       7
+upvalues (1) for 01312D60:
+        0       _ENV    1       0
+```
+
+4，函数调用指令， VARARG
+
+作用，VARARG指令（iABC模式）把传递给当前函数的变长参数加载到连续多个寄存器中。其中第一个寄存器的索引由操作数A指定，寄存器数量由操作数B指定，操作数C没有用。
+
+（对书中的一处有些疑惑，如果操作数B为0，那么vararg的参数将全部load进栈里，而且紧跟其后会把操作数A也push进栈里，目前自己的理解是因为可能之后要读vararg的参数，所以要利用操作数A为基础作索引。。）
+
+```txt
+VARARG指令对应Lua脚本里的vararg表达式，下面是一个简单的例子。
+
+./Luac.exe -p -l -l /D/Workspace/LearnLua/HelloWorld/res/script/instruction_vararg.lu
+a
+
+main <D:/Workspace/LearnLua/HelloWorld/res/script/instruction_vararg.lua:0,0> (3 instructions at 0067E850)
+0+ params, 5 slots, 1 upvalue, 5 locals, 1 constant, 0 functions
+        1       [5]     LOADK           0 -1    ; 100
+        2       [5]     VARARG          1 5
+        3       [5]     RETURN          0 1
+constants (1) for 0067E850:
+        1       100
+locals (5) for 0067E850:
+        0       a       3       4
+        1       b       3       4
+        2       c       3       4
+        3       d       3       4
+        4       e       3       4
+upvalues (1) for 0067E850:
+        0       _ENV    1       0
+```
+
+由于编译器生成的主函数也是vararg函数，所以也可以在里面使用vararg表达式。假定调用主函数时传递给它的参数是1、2、3，那么上例中的VARARG指令如图8-8所示。
 
 
 
