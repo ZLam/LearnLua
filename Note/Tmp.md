@@ -739,8 +739,10 @@ upvalues (1) for 011A07A0:
 
 但是如果数组长度大于25600呢？是不是后面的元素就只能用SETTABLE指令设置了？也不是。这种情况下SETLIST指令后面会跟一条EXTRAARG指令，用其Ax操作数来保存批次数。综上所述，如果指令的C操作数大于0，那么表示的是批次数加1，否则，真正的批次数存放在后续的EXTRAARG指令里。
 
+(注意有一种情况 , SETLIST的操作数B是0的情况 , 大概遇到 {1, 2, 3, func()} 这样的写法的时候就会出现 , 这时候设置 table 的值会依赖 func() 的返回值 , 具体可以看书里378页 , 涉及到CALL指令)
+
 ```txt
-下面我们结合一个简单的例子来观察一下SETLIST指令。
+下面我们结合一个简单的例子来观察一下SETLIST指令。(建议把注释的lua代码打开后再看看会对批数理解直观点)
 
 ./Luac.exe -p -l -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_setlist.lua
 
@@ -972,9 +974,85 @@ upvalues (1) for 0067E850:
         0       _ENV    1       0
 ```
 
-由于编译器生成的主函数也是vararg函数，所以也可以在里面使用vararg表达式。假定调用主函数时传递给它的参数是1、2、3，那么上例中的VARARG指令如图8-8所示。
+由于编译器生成的主函数也是vararg函数，所以也可以在里面使用vararg表达式。假定调用主函数时传递给它的参数是1、2、3，那么上例中的VARARG指令如图所示。
 
+5，函数调用指令， TAILCALL
 
+作用 , 们已经知道，函数调用一般通过调用栈来实现。用这种方法，每调用一个函数都会产生一个调用帧。如果方法调用层次太深（特别是递归调用函数时），就容易导致调用栈溢出。那么，有没有一种技术，既能让我们发挥递归函数的威力，又能避免调用栈溢出呢？有，那就是尾递归优化。利用这种优化，被调函数可以重用主调函数的调用帧，因此可以有效缓解调用栈溢出症状。不过尾递归优化只适用于某些特定的情况，并不能包治百病。
+
+TAILCALL指令（iABC模式） , 操作数ABC表示的意义跟 CALL 指令一样.
+
+```txt
+对尾递归优化的详细介绍超出了本书讨论范围，这里我们只要知道 return f(args)这样的返回语句会被Lua编译器编译成TAILCALL指令就可以了。下面来看一个例子。
+
+./Luac.exe -p -l -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_tailcall.l
+ua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_tailcall.lua:0,0> (7 instructions at 00ED56E8)
+0+ params, 4 slots, 1 upvalue, 0 locals, 4 constants, 0 functions
+        1       [1]     GETTABUP        0 0 -1  ; _ENV "f"
+        2       [1]     GETTABUP        1 0 -2  ; _ENV "a"
+        3       [1]     GETTABUP        2 0 -3  ; _ENV "b"
+        4       [1]     GETTABUP        3 0 -4  ; _ENV "c"
+        5       [1]     TAILCALL        0 4 0
+        6       [1]     RETURN          0 0
+        7       [1]     RETURN          0 1
+constants (4) for 00ED56E8:
+        1       "f"
+        2       "a"
+        3       "b"
+        4       "c"
+locals (0) for 00ED56E8:
+upvalues (1) for 00ED56E8:
+        0       _ENV    1       0
+```
+
+6，函数调用指令， SELF
+
+作用 , Lua虽然不是面向对象语言，但是提供了一些语法和底层支持，利用这些支持，用户就可以构造出一套完整的面向对象体系。SELF指令主要用来优化方法调用语法糖。比如说obj：f（a，b，c），虽然从语义的角度来说完全等价于obj.f（obj，a，b，c），但是Lua编译器并不是先去掉语法糖再按普通的函数调用处理，而是会生成SELF指令，这样就可以节约一条指令。SELF指令（iABC模式）把对象和方法拷贝到相邻的两个目标寄存器中。对象在寄存器中，索引由操作数B指定。方法名在常量表里，索引由操作数C指定。目标寄存器索引由操作数A指定。
+
+```txt
+下面有2个例子对比参照.
+
+1 , 使用 SELF 指令的例子
+
+./Luac.exe -p -l -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_self.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_self.lua:0,0> (5 instructions at 00726EE8)
+0+ params, 5 slots, 1 upvalue, 2 locals, 1 constant, 0 functions
+        1       [4]     LOADNIL         0 1
+        2       [5]     SELF            2 1 -1  ; "f"
+        3       [5]     MOVE            4 0
+        4       [5]     CALL            2 3 1
+        5       [5]     RETURN          0 1
+constants (1) for 00726EE8:
+        1       "f"
+locals (2) for 00726EE8:
+        0       a       2       6
+        1       obj     2       6
+upvalues (1) for 00726EE8:
+        0       _ENV    1       0
+
+2 , 不用 SELF 指令的例子
+
+./Luac.exe -p -l -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_self.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_self.lua:0,0> (6 instructions at 01706EC8)
+0+ params, 5 slots, 1 upvalue, 2 locals, 1 constant, 0 functions
+        1       [10]    LOADNIL         0 1
+        2       [11]    GETTABLE        2 1 -1  ; "f"
+        3       [11]    MOVE            3 1
+        4       [11]    MOVE            4 0
+        5       [11]    CALL            2 3 1
+        6       [11]    RETURN          0 1
+constants (1) for 01706EC8:
+        1       "f"
+locals (2) for 01706EC8:
+        0       a       2       7
+        1       obj     2       7
+upvalues (1) for 01706EC8:
+        0       _ENV    1       0
+```
 
 
 
