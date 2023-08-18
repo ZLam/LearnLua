@@ -1109,6 +1109,147 @@ lua 全局环境
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+lua 闭包 / upvalue
+
+闭包是计算机编程语言里非常普遍的一个概念，不过Upvalue却是Lua语言独有的。
+
+闭包概念begin
+
+一等函数
+
+如果在一门编程语言里，函数属于一等公民（First-classCitizen），我们就说这门语言里的函数是一等函数（First-classFunction）。具体是什么意思呢？其实就是说函数用起来和其他类型的值（比如数字或者字符串）没什么分别，比如说可以把函数存储在数据结构里、赋值给变量、作为参数传递给其他函数或者作为返回值从其他函数里返回等。
+
+支持一等函数的语言非常多。函数式编程语言，比如Haskell、Scala等，全部支持一等函数；很多脚本语言也支持一等函数，比如JavaScript、Python和本书讨论的Lua，C、C++和本书所使用的Go语言也都支持一等函数。作为反例，在Java语言里函数就不是一等公民（Java甚至没有函数的概念，只有方法）。
+
+如果一个函数以其他函数为参数，或者返回其他函数，我们称这个函数为高阶函数（Higher-orderFunction）；反之，我们称这个函数为一阶函数（First-orderFunction）。
+
+如果可以在函数的内部定义其他函数，我们称内部定义的函数为嵌套函数（NestedFunction），外部的函数为外围函数（EnclosingFunction）。在许多支持一等函数的语言里，函数实际上都是匿名的，在这些语言里，函数名就是普通的变量名，只是变量的值恰好是函数而已。比如在Lua里，函数定义语句只是函数定义表达式（或者叫函数构造器，也可以认为是函数字面量）和赋值语句的语法糖，下面两行代码在语义上完全等价。
+
+```lua
+function add(x, y) return x + y end
+add = function(x, y) return x + y end
+```
+
+变量作用域
+
+支持一等函数的编程语言有一个非常重要的问题需要处理，就是非局部变量的作用域问题。最简单的做法就是不支持嵌套函数，比如C语言，这样就完全避开了这个问题。对于支持嵌套函数的语言，有两种处理方式：动态作用域（DynamicScoping），或者静态作用域（StaticScoping）。
+
+在使用动态作用域的语言里，函数的非局部变量名具体绑定的是哪个变量只有等到函数运行时才能确定。由于动态作用域会导致程序不容易被理解，所以现代编程语言大多使用静态作用域。在目前流行的语言里，使用动态作用域的有shell语言Bash和PowerShell等。以Bash语言为例，下面的脚本（来自于Wikipedia）在执行时会先后打印出3和1。
+
+```bash
+x=1
+function g() {echo $x; x=2;}
+function f() {local x=3; g;}
+f               # 3
+echo $x         # 1
+```
+
+与动态作用域不同，静态作用域在编译时就可以确定非局部变量名绑定的变量，因此静态作用域也叫作词法作用域（LexicalScoping）。Lua也采用静态作用域，我们把上面的Bash脚本用Lua语言翻译一下，代码如下所示。
+
+```lua
+x = 1
+function g() print(x); x = 2 end
+function f() local x = 3; g() end
+f()             -- 1
+print(x)        -- 2
+```
+
+介绍完各种函数和作用域的概念，闭包（Closure）就非常好理解了。所谓闭包，就是按词法作用域捕获了非局部变量的嵌套函数。现在大家知道为什么在Lua内部函数被称为闭包了吧？因为Lua函数本质上全都是闭包。就算是编译器为我们生成的主函数也不例外，它从外部捕获了_ENV变量。
+
+闭包概念end
+
+upvalue概念begin
+
+如前所述，闭包是一个通用的概念，很多语言都支持闭包。但Upvalue是Lua里才有的术语，那么究竟什么是Upvalue呢？实际上Upvalue就是闭包内部捕获的非局部变量，可能是因为历史原因，这个术语一直被沿用至今。下面我们来看一个简单的例子。
+
+```lua
+local u, v, w
+local function f() u = v end
+```
+
+我们已经知道，Lua编译器会把脚本包装进一个主函数，因此上面的脚本在编译时大致会变成如下样子。
+
+```lua
+function main()
+    local u, v, w
+    local function f() u = v end
+end
+```
+
+函数f捕获了主函数里的两个局部变量，因此我们可以说f有两个Upvalue，分别是u和v。Lua编译器会把Upvalue相关信息编译进函数原型，存放在Upvalue表里。如果我们用luac命令（搭配两个“-l”选项）观察上面这段脚本，可以看到函数f原型里确实有两个Upvalue，如下所示。
+
+```txt
+./Luac.exe -p -l -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/test_upvalue_01.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/test_upvalue_01.lua:0,0> (3 instructions at 010217F8)
+0+ params, 4 slots, 1 upvalue, 4 locals, 0 constants, 1 function
+        1       [1]     LOADNIL         0 2
+        2       [4]     CLOSURE         3 0     ; 010218F8
+        3       [4]     RETURN          0 1
+constants (0) for 010217F8:
+locals (4) for 010217F8:
+        0       u       2       4
+        1       v       2       4
+        2       w       2       4
+        3       f       3       4
+upvalues (1) for 010217F8:
+        0       _ENV    1       0
+
+function <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/test_upvalue_01.lua:2,4> (3 instructions at 010218F8)
+0 params, 2 slots, 2 upvalues, 0 locals, 0 constants, 0 functions
+        1       [3]     GETUPVAL        0 1     ; v
+        2       [3]     SETUPVAL        0 0     ; u
+        3       [4]     RETURN          0 1
+constants (0) for 010218F8:
+locals (0) for 010218F8:
+upvalues (2) for 010218F8:
+        0       u       1       0
+        1       v       1       1
+```
+
+函数原型Upvalue表的每一项都有4列：第一列是序号，从0开始递增；第二列给出Upvalue的名字；第三列指出Upvalue捕获的是否是直接外围函数的局部变量，1表示是，0表示否；如果Upvalue捕获的是直接外围函数的局部变量，第四列给出局部变量在外围函数调用帧里的索引。
+
+upvalue概念end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 自己动手实现lua 读书笔记 end
 
 
