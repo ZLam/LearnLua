@@ -564,11 +564,11 @@ main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_test.lua:0,0> 
         5       [2]     RETURN          0 1
 ```
 
-15 , FOR循环指令 @TODO
+15 , FOR循环指令
 
 作用 , Lua语言的for循环语句有两种形式：数值（Numerical）形式和通用（Generic）形式。数值for循环用于按一定步长遍历某个范围内的数值，通用for循环主要用于遍历表。
 
-这里目前主要讨论数值形式
+这里目前主要讨论数值形式 @TODO
 
 数值for循环需要借助两条指令来实现：FORPREP和FORLOOP。
 
@@ -1054,28 +1054,6 @@ upvalues (1) for 01706EC8:
         0       _ENV    1       0
 ```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 native 函数调用（书里主要介绍的就是调Go函数）
 
 首先分清为什么又 lua函数 又 native函数，主要因为是 lua函数 是提供脚本层的逻辑，实际上都是对 lua value 的计算和管理，它不能取系统时间，加载文件等。一般要使用这些功能要引入c的库和调用c的函数，所以lua这边要加入一种方式调用这些native的函数。
@@ -1094,13 +1072,37 @@ native 函数调用（书里主要介绍的就是调Go函数）
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 lua 注册表
 
 实际就是在 Lua_State 类型里加了个 Table 类型的成员
 
+访问方式，伪索引（@TODO ，其实就是划分区间不同区间对应不同的逻辑去索引值，具体看C那边的实现吧）
+
 
 
 lua 全局环境
+
 实际就是上面的注册表里面的一个表而已
 
 
@@ -1226,7 +1228,383 @@ upvalues (2) for 010218F8:
 
 函数原型Upvalue表的每一项都有4列：第一列是序号，从0开始递增；第二列给出Upvalue的名字；第三列指出Upvalue捕获的是否是直接外围函数的局部变量，1表示是，0表示否；如果Upvalue捕获的是直接外围函数的局部变量，第四列给出局部变量在外围函数调用帧里的索引。
 
+如果闭包捕获的是非直接外围函数的局部变量会出现什么情况呢？比如下面这个例子。
+
+```lua
+local u, v, w
+local function f()
+    local function g()
+        u = v
+    end
+end
+```
+
+```txt
+./Luac.exe -p -l -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/test_upvalue_02.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/test_upvalue_02.lua:0,0> (3 instructions at 00483F40)
+0+ params, 4 slots, 1 upvalue, 4 locals, 0 constants, 1 function
+        1       [1]     LOADNIL         0 2
+        2       [6]     CLOSURE         3 0     ; 0047F508
+        3       [6]     RETURN          0 1
+constants (0) for 00483F40:
+locals (4) for 00483F40:
+        0       u       2       4
+        1       v       2       4
+        2       w       2       4
+        3       f       3       4
+upvalues (1) for 00483F40:
+        0       _ENV    1       0
+
+function <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/test_upvalue_02.lua:2,6> (2 instructions at 0047F508)
+0 params, 2 slots, 2 upvalues, 1 local, 0 constants, 1 function
+        1       [5]     CLOSURE         0 0     ; 0047F6E8
+        2       [6]     RETURN          0 1
+constants (0) for 0047F508:
+locals (1) for 0047F508:
+        0       g       2       3
+upvalues (2) for 0047F508:
+        0       u       1       0
+        1       v       1       1
+
+function <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/test_upvalue_02.lua:3,5> (3 instructions at 0047F6E8)
+0 params, 2 slots, 2 upvalues, 0 locals, 0 constants, 0 functions
+        1       [4]     GETUPVAL        0 1     ; v
+        2       [4]     SETUPVAL        0 0     ; u
+        3       [5]     RETURN          0 1
+constants (0) for 0047F6E8:
+locals (0) for 0047F6E8:
+upvalues (2) for 0047F6E8:
+        0       u       0       0
+        1       v       0       1
+```
+
+可见，虽然函数f并没有直接访问主函数中的局部变量，但是为了能够让函数g捕获u和v这两个Upvalue，函数f也必须捕获它们。
+
+可以看到，函数原型Upvalue表的第三列都变成了0，这说明这些Upvalue捕获的并非是直接外围函数中的局部变量，而是更外围的函数的局部变量。在这种情况下，Upvalue已经由外围函数捕获，嵌套函数直接使用即可，所以第四列表示的是外围函数的Upvalue表索引。
+
+像Lua这种，需要借助外围函数来捕获更外围函数局部变量的闭包，叫作扁平闭包（FlatClosures）。
+
+Upvalue是非局部变量，换句话说，就是某外围函数中定义的局部变量。那么全局变量又是什么呢？我们还是来看一个例子吧。
+
+```lua
+local function f()
+    local function g()
+        x = y
+    end
+end
+```
+
+```txt
+./Luac.exe -p -l -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/test_global_01.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/test_global_01.lua:0,0> (2 instructions at 011412A0)
+0+ params, 2 slots, 1 upvalue, 1 local, 0 constants, 1 function
+        1       [5]     CLOSURE         0 0     ; 011414C0
+        2       [5]     RETURN          0 1
+constants (0) for 011412A0:
+locals (1) for 011412A0:
+        0       f       2       3
+upvalues (1) for 011412A0:
+        0       _ENV    1       0
+
+function <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/test_global_01.lua:1,5> (2 instructions at 011414C0)
+0 params, 2 slots, 1 upvalue, 1 local, 0 constants, 1 function
+        1       [4]     CLOSURE         0 0     ; 011415A0
+        2       [5]     RETURN          0 1
+constants (0) for 011414C0:
+locals (1) for 011414C0:
+        0       g       2       3
+upvalues (1) for 011414C0:
+        0       _ENV    0       0
+
+function <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/test_global_01.lua:2,4> (3 instructions at 011415A0)
+0 params, 2 slots, 1 upvalue, 0 locals, 2 constants, 0 functions
+        1       [3]     GETTABUP        0 0 -2  ; _ENV "y"
+        2       [3]     SETTABUP        0 -1 0  ; _ENV "x"
+        3       [4]     RETURN          0 1
+constants (2) for 011415A0:
+        1       "x"
+        2       "y"
+locals (0) for 011415A0:
+upvalues (1) for 011415A0:
+        0       _ENV    0       0
+```
+
+在上面这段脚本里，函数g使用了x和y这两个变量，但无论是f还是主函数都没有定义这两个局部变量，那么x和y到底是什么呢？
+
+函数g的原型里并没有x和y这两个Upvalue，但是出现一个奇怪的Upvalue，名字是_ENV。
+
+可见，函数f的原型里也有这个Upvalue。我们再来看一下主函数的反编译输出。
+
+到这里可以揭晓答案了，全局变量实际上是某个特殊的表的字段，而这个特殊的表正是我们在第9章实现的全局环境。Lua编译器在生成主函数时会在它的外围隐式声明一个局部变量，类似下面这样。
+
+```lua
+local _ENV  -- 全局环境
+function main(...)
+    -- 其他代码
+end
+```
+
+然后编译器会把全局变量的读写翻译成_ENV字段的读写，也就是说，全局变量实际上也是语法糖，去掉语法糖后，前面的例子和下面这段脚本完全等价。
+
+```lua
+local function f()
+    local function g()
+        _ENV.x = _ENV.y
+    end
+end
+```
+
+到此，我们可以对Lua的变量类型进行一个简单的总结了。Lua的变量可以分为三类：局部变量在函数内部定义（本质上是函数调用帧里的寄存器），Upvalue是直接或间接外围函数定义的局部变量，全局变量则是全局环境表的字段（通过隐藏的Upvalue，也就是_ENV进行访问）。
+
+对于某个Upvalue来说，对它的任何改动都必须反映在其他该Upvalue可见的地方。另外，当嵌套函数执行时，外围函数的局部变量有可能已经退出作用域了。
+
+Lua闭包捕获的Upvalue数量已经由编译器计算好了，我们在创建Lua闭包时预先分配好空间即可。不仅Lua闭包可以捕获Upvalue，Go闭包也可以捕获Upvalue，与Lua闭包不同的是，我们需要在创建Go闭包时明确指定Upvalue的数量。
+
+我们需要根据函数原型里的Upvalue表来初始化闭包的Upvalue值。对于每个Upvalue，又有两种情况需要考虑：如果某一个Upvalue捕获的是当前函数的局部变量（Instack==1），那么我们只要访问当前函数的局部变量即可；如果某一个Upvalue捕获的是更外围的函数中的局部变量（Instack==0），该Upvalue已经被当前函数捕获，我们只要把该Upvalue传递给闭包即可。
+
+对于第一种情况，如果Upvalue捕获的外围函数局部变量还在栈上，直接引用即可，我们称这种Upvalue处于开放（Open）状态；反之，必须把变量的实际值保存在其他地方，我们称这种Upvalue处于闭合（Closed）状态。为了能够在合适的时机（比如局部变量退出作用域时，详见10.3.5节）把处于开放状态的Upvalue闭合，需要记录所有暂时还处于开放状态的Upvalue，我们把这些Upvalue记录在被捕获局部变量所在的栈帧里。（@TODO 目前还不太清楚干嘛要处理这个开放闭合问题）
+
+至于 native 的方法也可以有 upvalue ，大概的逻辑就是要处理，将 native方法 转成 native的闭包，然后在 push native闭包进栈时，把当前栈顶的n个 value pop 出栈成为 native闭包的 upvalue ，然后 native闭包 推入栈顶。
+
 upvalue概念end
+
+upvalue相关指令begin
+
+1， GETUPVAL
+
+作用，GETUPVAL指令（iABC模式），把当前闭包的某个Upvalue值拷贝到目标寄存器中。其中目标寄存器的索引由操作数A指定，Upvalue索引由操作数B指定，操作数C没用。
+
+```txt
+如果我们在函数中访问Upvalue值，Lua编译器就会在这些地方生成GETUPVAL指令，下面是一个简单的例子。
+
+./Luac.exe -p -l -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_getupval.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_getupval.lua:0,0> (4 instructions at 008546D0)
+0+ params, 4 slots, 1 upvalue, 3 locals, 1 constant, 1 function
+        1       [1]     LOADNIL         0 2
+        2       [4]     CLOSURE         3 0     ; 008548A8
+        3       [2]     SETTABUP        0 -1 3  ; _ENV "f"
+        4       [4]     RETURN          0 1
+constants (1) for 008546D0:
+        1       "f"
+locals (3) for 008546D0:
+        0       u       2       5
+        1       v       2       5
+        2       w       2       5
+upvalues (1) for 008546D0:
+        0       _ENV    1       0
+
+function <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_getupval.lua:2,4> (6 instructions at 008548A8)
+0 params, 5 slots, 3 upvalues, 5 locals, 2 constants, 0 functions
+        1       [3]     LOADK           0 -1    ; 1
+        2       [3]     LOADK           1 -2    ; 2
+        3       [3]     GETUPVAL        2 0     ; u
+        4       [3]     GETUPVAL        3 1     ; v
+        5       [3]     GETUPVAL        4 2     ; w
+        6       [4]     RETURN          0 1
+constants (2) for 008548A8:
+        1       1
+        2       2
+locals (5) for 008548A8:
+        0       a       6       7
+        1       b       6       7
+        2       c       6       7
+        3       d       6       7
+        4       e       6       7
+upvalues (3) for 008548A8:
+        0       u       1       0
+        1       v       1       1
+        2       w       1       2
+```
+
+在函数f（）里，我们使用了u、v、w这三个Upvalue，分别赋值给c、d、e这三个局部变量，产生了三条GETUPVAL指令。其中第二条GETUPVAL指令（对应d=v）如图所示。
+
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/%E6%9C%AA%E5%91%BD%E5%90%8D1692798985.png)
+
+2， SETUPVAL
+
+作用，SETUPVAL指令（iABC模式），使用寄存器中的值给当前闭包的Upvalue赋值。其中寄存器索引由操作数A指定，Upvalue索引由操作数B指定，操作数C没用。
+
+```txt
+如果我们在函数给Upvalue赋值，Lua编译器就会在这些地方生成SETUPVAL指令，下面是一个简单的例子。
+
+./Luac.exe -p -l -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_setupval.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_setupval.lua:0,0> (4 instructions at 011755D0)
+0+ params, 4 slots, 1 upvalue, 3 locals, 1 constant, 1 function
+        1       [1]     LOADNIL         0 2
+        2       [5]     CLOSURE         3 0     ; 0117F428
+        3       [2]     SETTABUP        0 -1 3  ; _ENV "f"
+        4       [5]     RETURN          0 1
+constants (1) for 011755D0:
+        1       "f"
+locals (3) for 011755D0:
+        0       u       2       5
+        1       v       2       5
+        2       w       2       5
+upvalues (1) for 011755D0:
+        0       _ENV    1       0
+
+function <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_setupval.lua:2,5> (7 instructions at 0117F428)
+0 params, 5 slots, 3 upvalues, 3 locals, 0 constants, 0 functions
+        1       [3]     LOADNIL         0 2
+        2       [4]     MOVE            3 0
+        3       [4]     MOVE            4 1
+        4       [4]     SETUPVAL        2 2     ; w
+        5       [4]     SETUPVAL        4 1     ; v
+        6       [4]     SETUPVAL        3 0     ; u
+        7       [5]     RETURN          0 1
+constants (0) for 0117F428:
+locals (3) for 0117F428:
+        0       a       2       8
+        1       b       2       8
+        2       c       2       8
+upvalues (3) for 0117F428:
+        0       u       1       0
+        1       v       1       1
+        2       w       1       2
+```
+
+在函数f（）里，我们给u、v、w这三个Upvalue赋值，因此产生了三条SETUPVAL指令。其中第三条SETUPVAL指令（对应u=a）如图所示。
+
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/%E6%9C%AA%E5%91%BD%E5%90%8D1692878471.png)
+
+3， GETTABUP
+
+作用，如果当前闭包的某个Upvalue是表，则GETTABUP指令（iABC模式）可以根据键从该表里取值，然后把值放入目标寄存器中。其中目标寄存器索引由操作数A指定，Upvalue索引由操作数B指定，键（可能在寄存器中也可能在常量表中）索引由操作数C指定。GETTABUP指令相当于GETUPVAL和GETTABLE这两条指令的组合，不过前者的效率明显要高一些。
+
+```txt
+如果我们在函数里按照键从Upvalue里取值，Lua编译器就会在这些地方生成GETTABUP指令，下面是一个简单的例子。
+
+./Luac.exe -p -l -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_gettabup.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_gettabup.lua:0,0> (4 instructions at 00BD1830)
+0+ params, 2 slots, 1 upvalue, 1 local, 1 constant, 1 function
+        1       [1]     LOADNIL         0 0
+        2       [6]     CLOSURE         1 0     ; 00BD69B0
+        3       [2]     SETTABUP        0 -1 1  ; _ENV "f"
+        4       [6]     RETURN          0 1
+constants (1) for 00BD1830:
+        1       "f"
+locals (1) for 00BD1830:
+        0       u       2       5
+upvalues (1) for 00BD1830:
+        0       _ENV    1       0
+
+function <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_gettabup.lua:2,6> (4 instructions at 00BD69B0)
+0 params, 5 slots, 1 upvalue, 5 locals, 1 constant, 0 functions
+        1       [3]     LOADNIL         0 4
+        2       [4]     GETTABUP        3 0 2   ; u
+        3       [5]     GETTABUP        3 0 -1  ; u 100
+        4       [6]     RETURN          0 1
+constants (1) for 00BD69B0:
+        1       100
+locals (5) for 00BD69B0:
+        0       a       2       5
+        1       b       2       5
+        2       c       2       5
+        3       d       2       5
+        4       e       2       5
+upvalues (1) for 00BD69B0:
+        0       u       1       0
+```
+
+上面例子里的两条GETTABUP指令覆盖了C操作数的两种情况，以第一条指令为例（对应d=u[k]），键在寄存器中，如图所示。
+
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/%E6%9C%AA%E5%91%BD%E5%90%8D1692879247.png)
+
+4， SETTABUP
+
+作用，如果当前闭包的某个Upvalue是表，则SETTABUP指令（iABC模式）可以根据键往该表里写入值。其中Upvalue索引由操作数A指定，键和值可能在寄存器中也可能在常量表中，索引分别由操作数B和C指定。和GETTABUP指令类似，SETTABUP指令相当于GETUPVAL和SETTABLE这两条指令的组合，不过一条指令的效率要高一些。
+
+```txt
+如果我们在函数里根据键往Upvalue里写入值，Lua编译器就会在这些地方生成SETTABUP指令，下面是一个简单的例子。
+
+./Luac.exe -p -l -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_settabup.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_settabup.lua:0,0> (4 instructions at 008712A8)
+0+ params, 2 slots, 1 upvalue, 1 local, 1 constant, 1 function
+        1       [1]     LOADNIL         0 0
+        2       [6]     CLOSURE         1 0     ; 00871540
+        3       [2]     SETTABUP        0 -1 1  ; _ENV "f"
+        4       [6]     RETURN          0 1
+constants (1) for 008712A8:
+        1       "f"
+locals (1) for 008712A8:
+        0       u       2       5
+upvalues (1) for 008712A8:
+        0       _ENV    1       0
+
+function <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_settabup.lua:2,6> (4 instructions at 00871540)
+0 params, 5 slots, 1 upvalue, 5 locals, 2 constants, 0 functions
+        1       [3]     LOADNIL         0 4
+        2       [4]     SETTABUP        0 2 3   ; u
+        3       [5]     SETTABUP        0 -1 -2 ; u 100 "haha"
+        4       [6]     RETURN          0 1
+constants (2) for 00871540:
+        1       100
+        2       "haha"
+locals (5) for 00871540:
+        0       a       2       5
+        1       b       2       5
+        2       c       2       5
+        3       d       2       5
+        4       e       2       5
+upvalues (1) for 00871540:
+        0       u       1       0
+```
+
+上面例子里有两条SETTABUP指令，其中第一条指令（对应u[k]=v）的B和C操作数都代表寄存器索引，第二条指令的B和C操作数都代表常量表索引。以第一条SETTABUP指令为例，如图所示。
+
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/%E6%9C%AA%E5%91%BD%E5%90%8D1692879985.png)
+
+5， JMP
+
+作用，JMP指令除了可以进行无条件跳转之外，还兼顾着闭合处于开启状态的Upvalue的责任。如果某个块内部定义的局部变量已经被嵌套函数捕获，那么当这些局部变量退出作用域（也就是块结束）时，编译器会生成一条JMP指令，指示虚拟机闭合相应的Upvalue。
+
+```txt
+./Luac.exe -p -l -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_jmp.lua
+
+main <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_jmp.lua:0,0> (5 instructions at 005A55D0)
+0+ params, 7 slots, 1 upvalue, 6 locals, 1 constant, 1 function
+        1       [5]     LOADNIL         0 5
+        2       [10]    CLOSURE         6 0     ; 005AD878
+        3       [8]     SETTABUP        0 -1 6  ; _ENV "foo"
+        4       [10]    JMP             4 0     ; to 5
+        5       [11]    RETURN          0 1
+constants (1) for 005A55D0:
+        1       "foo"
+locals (6) for 005A55D0:
+        0       x       2       6
+        1       y       2       6
+        2       z       2       6
+        3       a       2       5
+        4       b       2       5
+        5       c       2       5
+upvalues (1) for 005A55D0:
+        0       _ENV    1       0
+
+function <D:/Workspace_HDD/LearnLua/HelloWorld/res/script/instruction_jmp.lua:8,10> (3 instructions at 005AD878)
+0 params, 2 slots, 1 upvalue, 0 locals, 1 constant, 0 functions
+        1       [9]     LOADK           0 -1    ; 1
+        2       [9]     SETUPVAL        0 0     ; b
+        3       [10]    RETURN          0 1
+constants (1) for 005AD878:
+        1       1
+locals (0) for 005AD878:
+upvalues (1) for 005AD878:
+        0       b       1       4
+```
+
+可以看到，由于函数foo捕获了外部的局部变量b，所以在do语句的后面，编译器生成了一条JMP指令，该JMP指令的sBx操作数是0，所以其实并没有起到任何跳转作用，这条指令的真正用途，是闭合a、b、c这三个Upvalue。
+
+处于开启状态的Upvalue引用了还在寄存器里的Lua值，我们把这些Lua值从寄存器里复制出来，然后更新Upvalue，这样就将其改为了闭合状态。
+
+(看到这里大概能理解这个处理开放闭合 upvalue 是解决什么问题的了。)
+
+upvalue相关指令end
 
 
 
