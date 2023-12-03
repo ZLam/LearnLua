@@ -1239,6 +1239,8 @@ local function f()
 end
 ```
 
+在上面这段脚本里，函数f没有访问任何非局部变量，但是函数g访问了主函数里定义的局部变量u和v。
+
 ```txt
 ./Luac.exe -p -l -l /D/Workspace_HDD/LearnLua/HelloWorld/res/script/test_upvalue_02.lua
 
@@ -1673,6 +1675,112 @@ __newindex , 当Lua执行t[k]=v语句时，如果t不是表，或者k在表中�
 当我们试图调用一个非函数类型的值时，Lua会看这个值是否有__call元方法，如果有，Lua会以该值为第一个参数，后跟原方法调用的其他参数，来调用元方法，以元方法返回值为返回值。函数调用是由API方法Call（）实现的。
 
 元编程end
+
+
+
+
+
+
+
+
+
+
+迭代器begin
+
+Lua语言支持两种形式的for循环语句：数值for循环和通用for循环。数值for循环用于在两个数值范围内按照一定的步长进行迭代；通用for循环常用于对表进行迭代。不过通用for循环之所以“通用”，就在于它并不仅仅适用于表，实际上，通用for循环可以对任何迭代器进行迭代。
+
+迭代器（Iterator）模式是一种经典的设计模式，在这种模式里，我们使用迭代器（模式因此得名）对集合（Collection）或者容器（Container）里的元素进行遍历。
+
+为了对集合或者容器进行遍历，迭代器需要保存一些内部状态。在Java这种面向对象的语言里，迭代器自然是以对象形式存在。在Lua语言里，更自然的方式则是用函数来表示迭代器，内部状态可以由闭包捕获。下面我们来看一个对数组进行迭代的例子。
+
+```lua
+function ipairs(t)
+    local i = 0
+    return function()
+        i = i + 1
+        if t[i] == nil then
+            return nil, nil
+        else
+            return i, t[i]
+        end
+    end
+end
+```
+
+可以把上面的ipairs（）函数看作一个工厂，该函数每次调用都会返回一个数组迭代器。迭代器从外部捕获了t和i这两个变量（Upvalue），把它们作为内部状态用于控制迭代，并通过第一个返回值（是否是nil）通知使用者迭代是否结束。下面的代码演示了如何创建迭代器并利用它对数组进行遍历。
+
+```lua
+t = {10, 20, 30}
+iter = ipairs(t)
+while true do
+    local i, v = iter()
+    if i == nil then
+        break
+    end
+    print(i, v)
+end
+```
+
+和Java语言里的for-each语句类似，Lua语言也提供了for-in语句，也就是我们前面提到的通用for循环语句，从语言层面对迭代器给予支持。上面的代码可以用for-in语句简写成下面这样。
+
+```lua
+t = {10, 20, 30}
+for i, v in ipairs(t) do
+    print(i, v)
+end
+```
+
+以上是给数组（严格的说是给序列）创建迭代器，那么如何给关联数组创建迭代器呢？由于关联数组没办法通过递增下标的方式来遍历索引，所以Lua标准库提供了next（）函数来帮助我们创建关联数组迭代器。next（）函数接收两个参数——表和键。返回两个值——下一个键值对。如果传递给next（）函数的键是nil，表示迭代开始；如果next（）函数返回的键是nil，表示迭代结束。下面的代码演示了next（）函数的用法。
+
+```lua
+function pairs(t)
+    local k, v
+    return function()
+        k, v = next(t, k)
+        return k, v
+    end
+end
+
+t = {a = 10, b = 20, c = 30}
+for k, v in pairs(t) do
+    print(k, v)
+end
+```
+
+通过上面的例子，我们对迭代器和通用for循环有了一个大致的了解，下面给出通用for循环语句的一般形式。
+
+```txt
+for var_ 1, ..., var_ n in explist do block end
+```
+
+上面的for循环语句和下面的代码等价：
+
+```txt
+do
+    local _f, _s, _var = explist
+    while true do
+        local var_1, ..., var_n = _f(_s, _var)
+        if var_1 == nil then
+            break
+        end
+        _var = var_1
+        block
+    end
+end
+```
+
+其中_f、_s和_var是通用for循环内部使用的，由explist求值得到（多重赋值、多退少补，详见第8章）。_f是迭代器函数，_s是一个不变量，_var是控制变量。乍看起来有点复杂，实际上很好理解。我们用前面的pairs（）函数作为对比：_f相当于next（）函数，_s相当于表，_var则用于存放键。可见，虽然可以用闭包保存迭代器内部状态，不过通用for循环也很贴心，可以帮我们保存一些状态，这样很多时候就可以免去闭包创建之烦。
+
+Next（）方法根据键获取表的下一个键值对。其中表的索引由参数指定，上一个键从栈顶弹出。如果从栈顶弹出的键是nil，说明刚开始遍历表，把表的第一个键值对推入栈顶并返回true；否则，如果遍历还没有结束，把下一个键值对推入栈顶并返回true；如果表是空的，或者遍历已经结束，不用往栈里推入任何值，直接返回false即可。
+
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202023-12-03%20221807.png)
+
+上图，栈里原有4个值，其中索引2处是一个表，栈顶是该表的某个键。假设表还没有遍历结束，那么执行Next（2）之后，键会从栈顶弹出，取而代之的是表的下一个键值对。
+
+1， 通用for循环指令
+
+迭代器end
+
 
 
 
