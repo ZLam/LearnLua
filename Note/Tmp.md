@@ -1769,7 +1769,7 @@ do
 end
 ```
 
-其中_f、_s和_var是通用for循环内部使用的，由explist求值得到（多重赋值、多退少补，详见第8章）。_f是迭代器函数，_s是一个不变量，_var是控制变量。乍看起来有点复杂，实际上很好理解。我们用前面的pairs（）函数作为对比：_f相当于next（）函数，_s相当于表，_var则用于存放键。可见，虽然可以用闭包保存迭代器内部状态，不过通用for循环也很贴心，可以帮我们保存一些状态，这样很多时候就可以免去闭包创建之烦。
+其中_f、_s和_var是通用for循环内部使用的，由explist求值得到。_f是迭代器函数，_s是一个不变量，_var是控制变量。乍看起来有点复杂，实际上很好理解。我们用前面的pairs（）函数作为对比：_f相当于next（）函数，_s相当于表，_var则用于存放键。可见，虽然可以用闭包保存迭代器内部状态，不过通用for循环也很贴心，可以帮我们保存一些状态，这样很多时候就可以免去闭包创建之烦。
 
 Next（）方法根据键获取表的下一个键值对。其中表的索引由参数指定，上一个键从栈顶弹出。如果从栈顶弹出的键是nil，说明刚开始遍历表，把表的第一个键值对推入栈顶并返回true；否则，如果遍历还没有结束，把下一个键值对推入栈顶并返回true；如果表是空的，或者遍历已经结束，不用往栈里推入任何值，直接返回false即可。
 
@@ -1777,7 +1777,51 @@ Next（）方法根据键获取表的下一个键值对。其中表的索引由�
 
 上图，栈里原有4个值，其中索引2处是一个表，栈顶是该表的某个键。假设表还没有遍历结束，那么执行Next（2）之后，键会从栈顶弹出，取而代之的是表的下一个键值对。
 
-1， 通用for循环指令
+通用for循环指令 (TFORCALL , TFORLOOP)
+
+数值for循环是借助FORPREP和FORLOOP这两条指令来实现的。与之类似，通用for循环也是用TFORCALL和TFORLOOP这两条指令实现的。
+
+```txt
+./Luac.exe -p -l -l /D/Workspace/LearnLua/HelloWorld/res/script/instruction_for_common.lua
+
+main <D:/Workspace/LearnLua/HelloWorld/res/script/instruction_for_common.lua:0,0> (11 instructions at 00F53AE8)
+0+ params, 8 slots, 1 upvalue, 5 locals, 3 constants, 0 functions
+        1       [1]     GETTABUP        0 0 -1  ; _ENV "pairs"
+        2       [1]     GETTABUP        1 0 -2  ; _ENV "t"
+        3       [1]     CALL            0 2 4
+        4       [1]     JMP             0 4     ; to 9
+        5       [2]     GETTABUP        5 0 -3  ; _ENV "print"
+        6       [2]     MOVE            6 3
+        7       [2]     MOVE            7 4
+        8       [2]     CALL            5 3 1
+        9       [1]     TFORCALL        0 2
+        10      [1]     TFORLOOP        2 -6    ; to 5
+        11      [3]     RETURN          0 1
+constants (3) for 00F53AE8:
+        1       "pairs"
+        2       "t"
+        3       "print"
+locals (5) for 00F53AE8:
+        0       (for generator) 4       11
+        1       (for state)     4       11
+        2       (for control)   4       11
+        3       k       5       9
+        4       v       5       9
+upvalues (1) for 00F53AE8:
+        0       _ENV    1       0 
+```
+
+类似数值for循环，编译器为了实现通用for循环也使用了三个特殊的局部变量，这三个特殊变量对应上面提到的_f、_s和_var。编译器给通用for循环生成的指令可以分为三个部分。第一部分指令利用in和do之间的表达式列表给三个特殊变量赋值，第二部分执行for循环体，第三部分就是TFORCALL和TFORLOOP指令。
+
+以上面的输出为例，前三条指令可以用代码表示为_f、_s、_var=pairs（t），第四条是一个跳转指令，把控制跳转到TFORCALL指令。这四条指令属于第一部分；接下来的四条指令对应循环体，属于第二部分；然后是TFORCALL和TFORLOOP指令，属于第三部分。
+
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202023-12-09%20231850.png)
+
+上图是TFORCALL指令示意图，编译器使用的第一个特殊变量存放的就是迭代器。TFORCALL指令会使用其他两个特殊变量来调用迭代器，把结果保存到用户定义的变量里。
+
+![](https://raw.githubusercontent.com/ZLam/LearnLua/main/Note/Photo/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202023-12-09%20231911.png)
+
+上图是TFORLOOP指令示意图，如果迭代器返回的第一个值不是nil，则把该值拷贝到_var，然后跳转到循环体；若是nil，循环结束。
 
 迭代器end
 
